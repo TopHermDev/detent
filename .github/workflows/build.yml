@@ -1,0 +1,69 @@
+# Builds the APK on each push and pull request.
+# A tag that starts with "v" also publishes a GitHub release with detent.apk.
+name: build
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    env:
+      KEYSTORE_BASE64: ${{ secrets.DETENT_KEYSTORE_BASE64 }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: "platform-tools platforms;android-36 build-tools;36.0.0"
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Set the version
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            echo "VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
+          else
+            echo "VERSION=0.0.0-dev.${GITHUB_RUN_NUMBER}" >> "$GITHUB_ENV"
+          fi
+
+      # Pull requests from forks get no secrets. Those builds use a debug key.
+      - name: Decode the signing key
+        if: env.KEYSTORE_BASE64 != ''
+        run: |
+          echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/release.jks"
+          echo "DETENT_KEYSTORE=$RUNNER_TEMP/release.jks" >> "$GITHUB_ENV"
+
+      - name: Build the APK
+        env:
+          DETENT_KEYSTORE_PASSWORD: ${{ secrets.DETENT_KEYSTORE_PASSWORD }}
+          DETENT_KEY_ALIAS: ${{ secrets.DETENT_KEY_ALIAS }}
+          DETENT_KEY_PASSWORD: ${{ secrets.DETENT_KEY_PASSWORD }}
+        run: |
+          ./gradlew assembleRelease -PdetentVersion="$VERSION" -PdetentCode="$GITHUB_RUN_NUMBER"
+          cp app/build/outputs/apk/release/app-release.apk detent.apk
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: detent-${{ env.VERSION }}
+          path: detent.apk
+
+      - name: Publish the release
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" detent.apk docs/media/detent-promo.mp4 \
+            --title "Detent $VERSION" --generate-notes --verify-tag
