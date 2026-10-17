@@ -18,6 +18,7 @@ import androidx.activity.OnBackPressedCallback
 import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.ui.platform.AndroidUiDispatcher
 import androidx.core.app.NotificationManagerCompat
@@ -35,6 +36,21 @@ class MainActivity : ComponentActivity(), Host {
     private val launcherApps by lazy { getSystemService(LauncherApps::class.java) }
     private val roleRequest = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) {
         state.refreshSystem()
+    }
+    private var pickDone: ((String?, Boolean) -> Unit)? = null
+    private val photoPicker = registerForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
+        val done = pickDone ?: return@registerForActivityResult
+        pickDone = null
+        if (uri == null) {
+            done(null, false)
+            return@registerForActivityResult
+        }
+        val (w, h) = screenSize()
+        val app = applicationContext
+        thread(name = "detent-photo") {
+            val path = runCatching { CustomWallpaper.save(app, uri, w, h).path }.getOrNull()
+            runOnUiThread { done(path, path == null) }
+        }
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -117,18 +133,35 @@ class MainActivity : ComponentActivity(), Host {
         if (detail == null || !open(detail)) open(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS))
     }
 
-    override fun setWallpaper(theme: ThemeDef, pal: Palette, left: Boolean, done: (Boolean) -> Unit) {
-        val size = if (Build.VERSION.SDK_INT >= 30) {
-            windowManager.maximumWindowMetrics.bounds.let { it.width() to it.height() }
-        } else {
-            @Suppress("DEPRECATION")
-            DisplayMetrics().also { windowManager.defaultDisplay.getRealMetrics(it) }.let { it.widthPixels to it.heightPixels }
-        }
+    private fun screenSize(): Pair<Int, Int> = if (Build.VERSION.SDK_INT >= 30) {
+        windowManager.maximumWindowMetrics.bounds.let { it.width() to it.height() }
+    } else {
+        @Suppress("DEPRECATION")
+        DisplayMetrics().also { windowManager.defaultDisplay.getRealMetrics(it) }.let { it.widthPixels to it.heightPixels }
+    }
+
+    override fun setWallpaper(theme: ThemeDef, pal: Palette, left: Boolean, custom: String?, done: (Boolean) -> Unit) {
+        val (w, h) = screenSize()
         val app = applicationContext
         thread(name = "detent-wallpaper") {
-            val ok = runCatching { SystemWallpaper.apply(app, theme, pal, left, size.first, size.second) }.isSuccess
+            val ok = runCatching { SystemWallpaper.apply(app, theme, pal, left, custom, w, h) }.isSuccess
             runOnUiThread { done(ok) }
         }
+    }
+
+    override fun pickWallpaper(done: (path: String?, failed: Boolean) -> Unit) {
+        pickDone = done
+        try {
+            photoPicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+        } catch (e: ActivityNotFoundException) {
+            pickDone = null
+            done(null, true)
+        }
+    }
+
+    override fun cleanWallpapers(keep: String?) {
+        val app = applicationContext
+        thread(name = "detent-clean") { CustomWallpaper.clean(app, keep) }
     }
 
     private fun open(intent: Intent): Boolean = try {

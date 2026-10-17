@@ -58,7 +58,16 @@ interface Host {
     fun openNotificationAccess()
 
     /** Sets the lock screen and system wallpaper off the main thread, then calls [done] on the main thread. */
-    fun setWallpaper(theme: ThemeDef, pal: Palette, left: Boolean, done: (Boolean) -> Unit)
+    fun setWallpaper(theme: ThemeDef, pal: Palette, left: Boolean, custom: String?, done: (Boolean) -> Unit)
+
+    /**
+     * Opens the photo picker and saves the picked image. [done] gets the saved path, or null when the user
+     * cancels. [failed] is true when the image cannot be read.
+     */
+    fun pickWallpaper(done: (path: String?, failed: Boolean) -> Unit)
+
+    /** Deletes saved wallpapers except [keep]. */
+    fun cleanWallpapers(keep: String?)
 }
 
 private class Drag(val x0: Float, val y0: Float, var y: Float, val t0: Long, val zone: Zone) {
@@ -161,6 +170,10 @@ class LauncherState(
         private set
     var lockWall by mutableStateOf(prefs.lockWall)
         private set
+    /** Path of the user's own wallpaper, or null for the theme wallpaper. */
+    var customWall by mutableStateOf(prefs.customWall)
+        private set
+    private var prevCustom: String? = null
     var notifAccess by mutableStateOf(false)
         private set
     var isHome by mutableStateOf(false)
@@ -222,7 +235,9 @@ class LauncherState(
     }
 
     private fun persist() {
-        if (ob == null) prefs.save(cfg, dialKeys, pos.roundToInt())
+        if (ob != null) return
+        prefs.save(cfg, dialKeys, pos.roundToInt())
+        prefs.customWall = customWall
     }
 
     // Activity hooks.
@@ -572,6 +587,7 @@ class LauncherState(
     private fun openSetup() {
         prevCfg = cfg
         prevKeys = dialKeys
+        prevCustom = customWall
         obEdit = true
         search = false
         ob = Step.SHAPE
@@ -592,6 +608,7 @@ class LauncherState(
         obSeq++
         if (n == null) {
             persist()
+            host.cleanWallpapers(customWall)
             syncWallpaper()
         }
         run()
@@ -600,11 +617,26 @@ class LauncherState(
     /** Copies the theme to the lock screen when the theme or the side changed since the last copy. */
     private fun syncWallpaper() {
         if (!lockWall) return
-        val key = "${THEMES[cfg.theme].name}|${cfg.side}"
+        val custom = customWall
+        val key = "${THEMES[cfg.theme].name}|${cfg.side}|${custom ?: "theme"}"
         if (prefs.appliedWall == key) return
-        host.setWallpaper(THEMES[cfg.theme], PALETTES[cfg.theme], left) { ok ->
+        host.setWallpaper(THEMES[cfg.theme], PALETTES[cfg.theme], left, custom) { ok ->
             if (ok) prefs.appliedWall = key else showToast("can't set the lock screen")
         }
+    }
+
+    /** Opens the photo picker. The theme keeps the colours, and the photo replaces the theme wallpaper. */
+    fun pickWallpaper() {
+        tap()
+        host.pickWallpaper { path, failed ->
+            if (path != null) customWall = path
+            else if (failed) showToast("can't open that image")
+        }
+    }
+
+    fun useThemeWallpaper() {
+        tap()
+        customWall = null
     }
 
     fun toggleLockWall() {
@@ -632,6 +664,8 @@ class LauncherState(
             } else {
                 cfg = prevCfg ?: cfg
                 dialKeys = prevKeys ?: dialKeys
+                customWall = prevCustom
+                host.cleanWallpapers(prevCustom)
                 ob = null
                 syncRadius()
             }

@@ -63,6 +63,19 @@ The dial can sit on the right or the left edge.
 
 Detent has 27 themes. The 4 phone themes are dusk, ember, signal, and paper. They use a tinted dot-hand art. The 23 Omarchy themes each bring their own wallpaper. On the theme step, the colours change on each click of the dial. The wallpaper loads when the dial stops.
 
+### Use your own wallpaper
+
+Your photo replaces the theme wallpaper. The theme still sets the colours.
+
+1. Hold the clock to open the setup.
+2. Tap `next` to go to the theme step.
+3. Tap `your wallpaper` and pick a photo.
+4. Turn the dial to pick the colours.
+5. Tap `next` until you see `done`.
+6. Tap `done`.
+
+Detent crops the centre of the photo to the shape of your screen and keeps a copy. It does not need access to your other photos. To go back to the theme wallpaper, tap `theme wallpaper` on the same step. If the `lock screen` switch is on, the lock screen uses your photo too.
+
 ## Settings
 
 The `feel` step has 4 switches:

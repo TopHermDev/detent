@@ -163,7 +163,7 @@ private fun Home(s: LauncherState) {
             .focusRequester(focus).focusable()
             .onKeyEvent { it.type == KeyEventType.KeyDown && s.key(it.key) },
     ) {
-        Wallpaper(THEMES[wall], pal, s.left)
+        Wallpaper(THEMES[wall], pal, s.left, s.customWall)
         GestureLayer(s)
         Clock(s, pal)
         DialCanvas(s, pal)
@@ -197,7 +197,12 @@ private object Walls {
     private val cache = LruCache<String, ImageBitmap>(4)
 
     suspend fun load(ctx: Context, path: String): ImageBitmap? = cache.get(path) ?: withContext(Dispatchers.IO) {
-        runCatching { ctx.assets.open(path).use { BitmapFactory.decodeStream(it) }?.asImageBitmap() }.getOrNull()
+        runCatching {
+            // An absolute path is the user's own wallpaper. Anything else is an asset.
+            val bitmap = if (path.startsWith("/")) BitmapFactory.decodeFile(path)
+            else ctx.assets.open(path).use { BitmapFactory.decodeStream(it) }
+            bitmap?.asImageBitmap()
+        }.getOrNull()
     }?.also { cache.put(path, it) }
 }
 
@@ -211,13 +216,13 @@ private fun rememberAsset(path: String): Pair<String, ImageBitmap>? {
 }
 
 @Composable
-private fun Wallpaper(t: ThemeDef, pal: Palette, left: Boolean) {
-    val wall = t.wall
+private fun Wallpaper(t: ThemeDef, pal: Palette, left: Boolean, custom: String?) {
+    val wall = custom ?: t.wall
     if (wall == null) {
         HandArt(pal, left)
         return
     }
-    val img = rememberAsset(if (left && t.wallLeft != null) t.wallLeft else wall)
+    val img = rememberAsset(if (custom == null && left && t.wallLeft != null) t.wallLeft else wall)
     Crossfade(img, animationSpec = tween(450), label = "wall") { p ->
         if (p != null) Image(p.second, null, Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
     }
@@ -328,27 +333,13 @@ private fun Clock(s: LauncherState, pal: Palette) {
     }
     val time = hour + ":" + cal.get(Calendar.MINUTE).toString().padStart(2, '0')
     val date = "${DAYS[cal.get(Calendar.DAY_OF_WEEK) - 1]} ${cal.get(Calendar.DAY_OF_MONTH)} ${MONTHS[cal.get(Calendar.MONTH)]}"
-    var blink by remember { mutableStateOf(true) }
-    LaunchedEffect(s.resumed) {
-        blink = true
-        while (s.resumed) {
-            delay(550)
-            blink = !blink
-        }
-    }
     SideBox(s.left, u.clockTop, 28f, Modifier.graphicsLayer { this.alpha = alpha }) {
         Column(
             horizontalAlignment = if (s.left) Alignment.End else Alignment.Start,
             verticalArrangement = Arrangement.spacedBy(u.dp(6f)),
         ) {
             Txt(time, 68f, pal.fg, weight = FontWeight.Light, spacing = -.05f, line = 1f)
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Txt(date, 13f, pal.muted2, spacing = .02f)
-                Box(
-                    Modifier.padding(start = u.dp(6f)).size(u.dp(8.06f), u.dp(14.95f))
-                        .graphicsLayer { this.alpha = if (blink) 1f else 0f }.background(pal.accent),
-                )
-            }
+            Txt(date, 13f, pal.muted2, spacing = .02f)
         }
     }
 }

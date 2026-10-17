@@ -48,6 +48,11 @@ class Prefs(ctx: Context) {
         get() = sp.getBoolean("lockWall", true)
         set(v) = sp.edit { putBoolean("lockWall", v) }
 
+    /** Path of the user's own wallpaper, or null to use the theme wallpaper. */
+    var customWall: String?
+        get() = sp.getString("customWall", null)?.takeIf { java.io.File(it).exists() }
+        set(v) = sp.edit { putString("customWall", v) }
+
     /** The theme and side that the system wallpaper shows now. */
     var appliedWall: String?
         get() = sp.getString("appliedWall", null)

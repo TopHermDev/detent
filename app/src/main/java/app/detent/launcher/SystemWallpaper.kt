@@ -19,10 +19,10 @@ import kotlin.math.max
  */
 object SystemWallpaper {
     /** Renders and sets the wallpaper. This blocks, so call it off the main thread. */
-    fun apply(ctx: Context, theme: ThemeDef, pal: Palette, left: Boolean, width: Int, height: Int) {
+    fun apply(ctx: Context, theme: ThemeDef, pal: Palette, left: Boolean, custom: String?, width: Int, height: Int) {
         val wm = WallpaperManager.getInstance(ctx)
         check(wm.isWallpaperSupported && wm.isSetWallpaperAllowed) { "wallpaper changes are not allowed" }
-        val bitmap = render(ctx, theme, pal, left, width, height)
+        val bitmap = render(ctx, theme, pal, left, custom, width, height)
         try {
             wm.setBitmap(bitmap, null, true, WallpaperManager.FLAG_SYSTEM or WallpaperManager.FLAG_LOCK)
         } finally {
@@ -30,18 +30,22 @@ object SystemWallpaper {
         }
     }
 
-    /** The same layers the home screen draws behind the dial. */
-    fun render(ctx: Context, theme: ThemeDef, pal: Palette, left: Boolean, w: Int, h: Int): Bitmap {
+    /** The same layers the home screen draws behind the dial. [custom] is the path of the user's own wallpaper. */
+    fun render(ctx: Context, theme: ThemeDef, pal: Palette, left: Boolean, custom: String?, w: Int, h: Int): Bitmap {
         val out = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
         val c = Canvas(out)
         c.drawColor(pal.bg.toArgb())
-        val hand = theme.wall == null
-        val path = when {
-            hand -> "hands.webp"
-            left && theme.wallLeft != null -> theme.wallLeft
-            else -> theme.wall
+        val hand = custom == null && theme.wall == null
+        val src = if (custom != null) {
+            BitmapFactory.decodeFile(custom) ?: error("can't read $custom")
+        } else {
+            val path = when {
+                hand -> "hands.webp"
+                left && theme.wallLeft != null -> theme.wallLeft
+                else -> theme.wall
+            }
+            ctx.assets.open(path!!).use { BitmapFactory.decodeStream(it) }
         }
-        val src = ctx.assets.open(path!!).use { BitmapFactory.decodeStream(it) }
         val paint = Paint(Paint.FILTER_BITMAP_FLAG or Paint.ANTI_ALIAS_FLAG)
         if (hand) paint.colorFilter = ColorMatrixColorFilter(handMatrix(pal))
         // Centre crop, like ContentScale.Crop.

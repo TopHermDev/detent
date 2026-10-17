@@ -44,10 +44,11 @@ import kotlinx.coroutines.launch
 
 private class Copy(val counter: String, val title: String, val body: String)
 
-private fun copy(step: Int) = when (step) {
+private fun copy(step: Int, custom: Boolean) = when (step) {
     Step.WELCOME -> Copy("", "dial", "your apps sit on a wheel at the edge. turn it to choose, tap to open.")
     Step.SHAPE -> Copy("1 / 4", "shape", "pick a layout and a side, then turn the dial to try it.")
-    Step.THEME -> Copy("2 / 4", "theme", "turn the dial to try one. each brings its own wallpaper.")
+    Step.THEME -> if (custom) Copy("2 / 4", "theme", "turn the dial to pick the colours. your wallpaper stays.")
+    else Copy("2 / 4", "theme", "turn the dial to try one. each brings its own wallpaper.")
     Step.APPS -> Copy("3 / 4", "apps", "pick what goes on the dial. the rest stay one search away.")
     Step.FEEL -> Copy("4 / 4", "feel", "a click and a tick for every detent. dots mark new notifications. the lock screen can use the theme.")
     else -> Copy("", "ready", "hold the clock to change your setup. hold an app for shortcuts, or the dial to jump by letter.")
@@ -57,7 +58,7 @@ private fun copy(step: Int) = when (step) {
 fun Onboarding(s: LauncherState, pal: Palette, theme: ThemeDef) {
     val u = LocalUnits.current
     val step = s.ob ?: return
-    val c = copy(step)
+    val c = copy(step, s.customWall != null)
 
     // Each step fades in and rises 8 units.
     val fade = remember { Animatable(1f) }
@@ -112,9 +113,15 @@ fun Onboarding(s: LauncherState, pal: Palette, theme: ThemeDef) {
                         Chip("dial left", s.cfg.side == Side.Left, pal, { s.setSide(Side.Left) })
                     }
                 }
-                Step.THEME -> Row(Modifier.padding(top = u.dp(42f)), horizontalArrangement = gap) {
-                    Chip("phone", theme.group == "phone", pal, { s.jumpGroup("phone") }, weight = FontWeight.Medium)
-                    Chip("omarchy", theme.group == "omarchy", pal, { s.jumpGroup("omarchy") }, weight = FontWeight.Medium)
+                Step.THEME -> {
+                    Row(horizontalArrangement = gap) {
+                        Chip("phone", theme.group == "phone", pal, { s.jumpGroup("phone") }, weight = FontWeight.Medium)
+                        Chip("omarchy", theme.group == "omarchy", pal, { s.jumpGroup("omarchy") }, weight = FontWeight.Medium)
+                    }
+                    Row(horizontalArrangement = gap) {
+                        Chip("theme wallpaper", s.customWall == null, pal, { s.useThemeWallpaper() })
+                        Chip("your wallpaper", s.customWall != null, pal, { s.pickWallpaper() })
+                    }
                 }
                 Step.FEEL -> Row(Modifier.padding(top = u.dp(42f)), horizontalArrangement = gap) {
                     Chip("sound", s.sound, pal, { s.toggleSound() })
