@@ -73,6 +73,9 @@ interface Host {
 private class Drag(val x0: Float, val y0: Float, var y: Float, val t0: Long, val zone: Zone) {
     var moved = false
     var scrub = false
+
+    /** True when the touch caught a turning dial. A tap then only stops the dial. */
+    var caught = false
     val samples = ArrayDeque<Pair<Long, Float>>()
 }
 
@@ -361,7 +364,8 @@ class LauncherState(
             lastIdx = idx
             pawl = 1f
             val t = SystemClock.uptimeMillis()
-            if (t - lastClick > 26) {
+            // The open sound covers the turn that a tap starts.
+            if (open == null && t - lastClick > 26) {
                 lastClick = t
                 val letters = scrub != null
                 fb.click(letters)
@@ -407,6 +411,7 @@ class LauncherState(
         val zone = if (ob == null) zoneAt(x, y) else Zone.None
         val t = SystemClock.uptimeMillis()
         val d = Drag(x, y, y, t, zone)
+        d.caught = spin == Spin.Fling || spin == Spin.Wheel || (spin == Spin.Settle && abs(target - pos) > .3f)
         d.samples.addLast(t to pos)
         drag = d
         spin = Spin.Drag
@@ -447,7 +452,7 @@ class LauncherState(
         if (!d.moved && t - d.t0 < 450) {
             target = pos.roundToInt().toFloat()
             spin = Spin.Settle
-            tapAt(x, y)
+            if (!d.caught) tapAt(x, y)
             run()
             return
         }
@@ -517,9 +522,9 @@ class LauncherState(
         val k = (pos + atan2(dy, dx) / g.step).roundToInt()
         val cur = pos.roundToInt()
         if (abs(k - pos) > g.span) return
-        if (k == cur) {
-            if (ob == null) launchSelected()
-        } else {
+        if (ob == null) {
+            if (k == cur) launchSelected() else launchAt(k)
+        } else if (k != cur) {
             fb.tick()
             target = k.toFloat()
             spin = Spin.Settle
@@ -915,6 +920,22 @@ class LauncherState(
         openApp(app.display, app.key, app.pkgUser, from, "", true) { host.launchApp(app, it) }
     }
 
+    /** Opens the app at row [k]. The name lifts off where it is, and the dial turns the app into the notch. */
+    private fun launchAt(k: Int) {
+        val apps = dialApps
+        if (apps.isEmpty()) return
+        val app = apps[mod(k, apps.size)]
+        val d = k - pos
+        val n = app.display.length
+        val s = labelScale(abs(d), n)
+        val p = labelPose(d, n, s, Geo(radius, cy), layout.markers, left)
+        target = k.toFloat()
+        spin = Spin.Settle
+        openApp(app.display, app.key, app.pkgUser, Pose(p.x, p.y, p.rot, s * 15f / 44f, p.tx), "", true) {
+            host.launchApp(app, it)
+        }
+    }
+
     private fun openApp(
         label: String,
         key: String?,
@@ -968,7 +989,9 @@ class LauncherState(
             fb.click(true)
             fb.tap()
         }
-        open = o.copy(phase = Phase.Out)
+        // The name drops into the notch, also when it lifted off a different row.
+        val back = if (o.fromDial && curApp()?.key == o.key) selectedPose() ?: o.from else o.from
+        open = o.copy(phase = Phase.Out, from = back)
         scope.launch {
             delay(440)
             if (open?.id == o.id) open = null

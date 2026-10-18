@@ -156,6 +156,12 @@ fun fitScale(chars: Int) = max(1f, 150f / (chars * 9f))
 
 fun selScale(chars: Int) = min(1.45f, fitScale(chars))
 
+/** Scale of a dial label [a] rows from the notch. The label grows as it nears the notch. */
+fun labelScale(a: Float, chars: Int): Float {
+    val cl = max(0f, 1 - a)
+    return min(1 + .45f * cl * cl, fitScale(chars))
+}
+
 fun labelRadius(g: Geo, m: Markers) = g.r - when (m) {
     Markers.Ticks -> 28f
     Markers.Double -> 34f

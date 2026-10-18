@@ -4,7 +4,7 @@
 
 # Detent
 
-Detent is a home screen for Android that you turn. Your apps sit on a dial at the edge of the screen. Turn the dial to move an app into the notch. Tap the app to open it.
+Detent is a home screen for Android that you turn. Your apps sit on a dial at the edge of the screen. Turn the dial to find an app. Tap the app to open it.
 
 [Watch the 48-second video](docs/media/detent-promo.mp4) · [Download the latest APK](../../releases/latest/download/detent.apk)
 
@@ -29,8 +29,8 @@ adb install detent.apk
 | Action | Result |
 | --- | --- |
 | Drag or flick the dial | The dial turns. Each app clicks into the notch. |
-| Tap the app in the notch | The app opens. Its name lifts off the dial. |
-| Tap a different app | The dial turns to that app. |
+| Tap any app on the dial | The app opens. Its name lifts off the dial, and the dial turns the app into the notch. |
+| Tap the dial while it turns | The dial stops. No app opens. |
 | Hold the dial | Letters replace the apps. Slide to a letter and release to jump to it. |
 | Hold the app in the notch | A menu shows the app shortcuts, `app info`, and `remove from dial`. |
 | Hold the clock or an empty area | The setup opens: shape, theme, apps, and feel. |

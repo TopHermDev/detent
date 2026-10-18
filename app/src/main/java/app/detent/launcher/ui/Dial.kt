@@ -27,7 +27,7 @@ import app.detent.launcher.Palette
 import app.detent.launcher.Step
 import app.detent.launcher.THEME_NAMES
 import app.detent.launcher.W
-import app.detent.launcher.fitScale
+import app.detent.launcher.labelScale
 import app.detent.launcher.labelPose
 import app.detent.launcher.mod
 import kotlin.math.abs
@@ -35,7 +35,6 @@ import kotlin.math.ceil
 import kotlin.math.cos
 import kotlin.math.floor
 import kotlin.math.max
-import kotlin.math.min
 import kotlin.math.pow
 import kotlin.math.sin
 
@@ -154,9 +153,10 @@ private fun DrawScope.drawLabels(
         val cl = max(0f, 1 - a)
         val sel = cl > .5f
         val name = names[i]
-        val s = if (scrubbing) 1 + .9f * cl * cl else min(1 + .45f * cl * cl, fitScale(name.length))
+        val s = if (scrubbing) 1 + .9f * cl * cl else labelScale(a, name.length)
         val p = labelPose(d, name.length, s, g, layout.markers, left)
-        val op = if (i == hide && a < .5f) 0f else (1 - a / g.span).pow(1.35f)
+        // The open app's name is in the title, so its row stays empty while the dial turns.
+        val op = if (i == hide) 0f else (1 - a / g.span).pow(1.35f)
         if (op < .004f) continue
         val text = measurer.measure(name, if (sel) medium else regular)
         withTransform({
