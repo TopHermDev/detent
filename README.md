@@ -36,6 +36,10 @@ adb install detent.apk
 | Hold the app in the notch | A menu shows the app shortcuts, `app info`, and `remove from dial`. |
 | Hold the clock or an empty area | The setup opens: shape, theme, apps, and feel. |
 | Tap `search` | Search all your apps. Tap `+ dial` to add an app to the dial. |
+| Tap the quick button | The quick app opens. If the button has no app, pick one. |
+| Hold the quick button | Pick a different quick app, or tap `clear`. |
+
+The quick button sits in the bottom corner on the dial side. It holds one app that you need fast, such as the camera.
 
 With a hardware keyboard, `j` and `k` turn the dial. `l` or `Enter` opens the app. `/` opens search. `Esc` goes back.
 

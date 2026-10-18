@@ -23,6 +23,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -80,6 +81,8 @@ import androidx.compose.ui.input.pointer.changedToUp
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.positionChanged
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
@@ -180,6 +183,7 @@ private fun Home(s: LauncherState) {
         if (s.kind != Kind.Readout) ScrubLetter(s, pal)
         PressRing(s, pal)
         SearchButton(s, pal)
+        QuickButton(s, pal)
         if (s.ob != null) Onboarding(s, pal, THEMES[live])
         QuickMenuView(s, pal)
         SearchSheet(s, pal)
@@ -377,6 +381,54 @@ private fun SearchButton(s: LauncherState, pal: Palette) {
                 drawLine(pal.fg, Offset(8.5f * k, 8.5f * k), Offset(12.74f * k, 12.74f * k), strokeWidth = 1.5f * k)
             }
             Txt("search", 13f, pal.fg)
+        }
+    }
+}
+
+/** The quick button sits in the bottom corner on the dial side. A tap opens its app. Hold it to pick another app. */
+@Composable
+private fun QuickButton(s: LauncherState, pal: Palette) {
+    val u = LocalUnits.current
+    val homeIdle = s.ob == null && !s.search && s.open == null
+    val idle by rememberUpdatedState(homeIdle)
+    val shown = homeIdle && s.scrub == null
+    val alpha by animateFloatAsState(if (shown) 1f else 0f, tween(300), label = "quickAlpha")
+    val dy by animateFloatAsState(if (shown) 0f else 8f, tween(300), label = "quickY")
+    val app = s.quickApp
+    // The start and the centre of the label in design units. The name lifts off from here when the app opens.
+    var label by remember { mutableStateOf(Offset.Zero) }
+    SideBox(!s.left, u.searchY, 24f, Modifier.graphicsLayer { this.alpha = alpha; translationY = dy * u.k }) {
+        val shape = RoundedCornerShape(50)
+        Row(
+            Modifier.height(u.dp(44f)).clip(shape).background(pal.btnBg).border(u.dp(1f), pal.rim2, shape)
+                .pointerInput(s) {
+                    detectTapGestures(
+                        onTap = { if (idle) s.quickTap(label.x, label.y) },
+                        onLongPress = { if (idle) s.quickHold() },
+                    )
+                }
+                .padding(start = u.dp(14f), end = u.dp(18f)),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(u.dp(10f)),
+        ) {
+            val dot = if (app != null && s.hasDot(app)) pal.accent else pal.fg
+            Canvas(Modifier.size(u.dp(14f))) {
+                val k = u.k
+                if (app == null) {
+                    drawLine(pal.fg, Offset(2f * k, 7f * k), Offset(12f * k, 7f * k), strokeWidth = 1.5f * k)
+                    drawLine(pal.fg, Offset(7f * k, 2f * k), Offset(7f * k, 12f * k), strokeWidth = 1.5f * k)
+                } else {
+                    drawCircle(dot, 3.5f * k, Offset(7f * k, 7f * k))
+                }
+            }
+            Txt(
+                app?.display ?: "quick app", 13f, pal.fg,
+                Modifier.onGloballyPositioned {
+                    val p = it.positionInRoot()
+                    label = Offset(p.x / u.k, (p.y + it.size.height / 2f) / u.k)
+                },
+                maxLines = 1,
+            )
         }
     }
 }

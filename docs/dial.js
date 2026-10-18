@@ -85,6 +85,8 @@ export function palette(t) {
 export const APPS = ['calculator', 'calendar', 'camera', 'chrome', 'clock', 'contacts', 'drive', 'files', 'gmail',
   'keep', 'maps', 'messages', 'music', 'phone', 'photos', 'play store', 'settings', 'weather', 'youtube'];
 
+const QUICK = 'camera';
+
 const DAYS = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
 const MONTHS = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
 const H24 = (() => {
@@ -563,6 +565,8 @@ export class Dial {
 
   onDown(x, y) {
     if (this.open) return;
+    // The quick button takes its own taps.
+    if (this.onQuick(x, y)) { this.quickDown = true; return; }
     const t = performance.now();
     const d = {
       x0: x, y0: y, y, t0: t, moved: false, scrub: false, samples: [[t, this.pos]],
@@ -581,6 +585,7 @@ export class Dial {
   }
 
   onMove(x, y) {
+    if (this.quickDown) return;
     const d = this.drag;
     if (!d) return;
     if (!d.moved && (Math.abs(y - d.y0) > 6 || Math.abs(x - d.x0) > 6)) {
@@ -597,6 +602,11 @@ export class Dial {
 
   onUp(x, y) {
     clearTimeout(this.press);
+    if (this.quickDown) {
+      this.quickDown = false;
+      if (this.onQuick(x, y)) this.openQuick();
+      return;
+    }
     const d = this.drag;
     if (!d) return;
     this.drag = null;
@@ -618,6 +628,7 @@ export class Dial {
 
   onCancel() {
     clearTimeout(this.press);
+    this.quickDown = false;
     const d = this.drag;
     if (!d) return;
     this.drag = null;
@@ -719,6 +730,28 @@ export class Dial {
     this.run();
   }
 
+  // The quick button sits in the bottom corner on the dial side. In the demo it holds the camera.
+
+  quickBox() {
+    this.font(13, 400, 0);
+    const w = 14 + 14 + 10 + this.g.measureText(QUICK).width + 18;
+    return { x: this.left ? 24 : W - 24 - w, y: SEARCH_Y, w, h: 44 };
+  }
+
+  onQuick(x, y) {
+    if (this.a.search < .5) return false;
+    const b = this.quickBox();
+    return x >= b.x && x <= b.x + b.w && y >= b.y && y <= b.y + b.h;
+  }
+
+  openQuick() {
+    const b = this.quickBox();
+    // The grid ripple starts at the label. The radial sheet grows from it.
+    this.open = { name: QUICK, t: 0, grid: this.grid, rx: b.x + 38 + (this.grid ? 6 : 0), ry: b.y + b.h / 2 };
+    this.onChange({ open: QUICK });
+    this.run();
+  }
+
   // Drawing.
 
   font(size, weight, spacing) {
@@ -760,6 +793,7 @@ export class Dial {
     }
     if (this.kind !== 'readout') this.drawScrubLetter();
     this.drawSearch();
+    this.drawQuick();
     this.drawOpen();
     this.drawStatus();
   }
@@ -822,6 +856,23 @@ export class Dial {
     g.lineTo(ix + 12.74, iy + 12.74);
     g.stroke();
     this.text('search', ix + 24, y + h / 2, 13, 400, pal.fg, a, 0);
+  }
+
+  drawQuick() {
+    const a = this.a.search;
+    if (a <= .004) return;
+    const g = this.g, pal = this.pal, b = this.quickBox(), y = b.y + (1 - a) * 8;
+    g.globalAlpha = a;
+    g.fillStyle = css(pal.bg, .55);
+    g.beginPath();
+    g.roundRect(b.x, y, b.w, b.h, b.h / 2);
+    g.fill();
+    g.strokeStyle = css(pal.fg, .22);
+    g.lineWidth = 1;
+    g.stroke();
+    g.globalAlpha = 1;
+    this.dot(b.x + 21, y + b.h / 2, 3.5, pal.fg, a);
+    this.text(QUICK, b.x + 38, y + b.h / 2, 13, 400, pal.fg, a, 0);
   }
 
   drawScrubLetter() {

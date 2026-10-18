@@ -115,7 +115,7 @@ fun SearchSheet(s: LauncherState, pal: Palette) {
                             },
                             contentAlignment = Alignment.CenterStart,
                         ) {
-                            if (q.isEmpty()) Txt("search apps", 26f, pal.muted, weight = FontWeight.Light, spacing = -.03f, maxLines = 1)
+                            if (q.isEmpty()) Txt(if (s.pick) "pick a quick app" else "search apps", 26f, pal.muted, weight = FontWeight.Light, spacing = -.03f, maxLines = 1)
                             inner()
                         }
                     },
@@ -125,9 +125,22 @@ fun SearchSheet(s: LauncherState, pal: Palette) {
                 }
             }
             val n = s.dialApps.size
-            val count = if (q.isNotBlank()) "${results.size} " + if (results.size == 1) "match" else "matches"
-            else "${results.size} apps · $n on dial"
-            Txt(count, 11f, pal.muted, Modifier.padding(start = u.dp(28f), top = u.dp(16f), end = u.dp(28f), bottom = u.dp(8f)), spacing = .06f)
+            val count = when {
+                q.isNotBlank() -> "${results.size} " + if (results.size == 1) "match" else "matches"
+                s.pick -> "tap an app for the quick button"
+                else -> "${results.size} apps · $n on dial"
+            }
+            Row(
+                Modifier.fillMaxWidth().padding(start = u.dp(28f), top = u.dp(16f), end = u.dp(18f), bottom = u.dp(8f)),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Txt(count, 11f, pal.muted, Modifier.weight(1f), spacing = .06f, maxLines = 1)
+                if (s.pick && s.quickKey != null) {
+                    Box(Modifier.height(u.dp(32f)).tap { s.clearQuick() }.padding(horizontal = u.dp(10f)), contentAlignment = Alignment.Center) {
+                        Txt("clear", 11f, pal.accent, spacing = .06f)
+                    }
+                }
+            }
             LazyColumn(
                 Modifier.weight(1f).fillMaxWidth(),
                 contentPadding = PaddingValues(start = u.dp(12f), end = u.dp(12f), bottom = u.dp(48f)),
@@ -152,14 +165,18 @@ private fun ResultRow(s: LauncherState, pal: Palette, app: AppEntry, highlight: 
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Row(
-            Modifier.weight(1f).fillMaxHeight().tap { s.openFromSearch(app, centre / u.k) }.padding(horizontal = u.dp(16f)),
+            Modifier.weight(1f).fillMaxHeight()
+                .tap { if (s.pick) s.setQuick(app) else s.openFromSearch(app, centre / u.k) }
+                .padding(horizontal = u.dp(16f)),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(u.dp(10f)),
         ) {
             Txt(app.label, 16f, pal.fg, Modifier.weight(1f, fill = false), maxLines = 1)
             if (s.hasDot(app)) Box(Modifier.size(u.dp(5f)).clip(CircleShape).background(pal.accent))
         }
-        if (onDial) {
+        if (s.pick) {
+            if (app.key == s.quickKey) Txt("quick app", 11f, pal.muted, Modifier.padding(horizontal = u.dp(16f)), spacing = .04f)
+        } else if (onDial) {
             Txt("on dial", 11f, pal.muted, Modifier.padding(horizontal = u.dp(16f)), spacing = .04f)
         } else {
             Box(

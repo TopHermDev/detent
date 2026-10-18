@@ -53,6 +53,11 @@ class Prefs(ctx: Context) {
         get() = sp.getString("customWall", null)?.takeIf { java.io.File(it).exists() }
         set(v) = sp.edit { putString("customWall", v) }
 
+    /** Key of the app on the quick button, or null when the button has no app. */
+    var quick: String?
+        get() = sp.getString("quick", null)
+        set(v) = sp.edit { putString("quick", v) }
+
     /** The theme and side that the system wallpaper shows now. */
     var appliedWall: String?
         get() = sp.getString("appliedWall", null)

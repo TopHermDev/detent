@@ -176,6 +176,15 @@ class LauncherState(
     var search by mutableStateOf(false)
         private set
     var query by mutableStateOf("")
+
+    /** True while the search sheet picks the app for the quick button. */
+    var pick by mutableStateOf(false)
+        private set
+
+    /** Key of the app on the quick button, or null when the button has no app. */
+    var quickKey by mutableStateOf(prefs.quick)
+        private set
+    val quickApp by derivedStateOf { quickKey?.let { k -> repo.apps.firstOrNull { it.key == k } } }
     var open by mutableStateOf<OpenApp?>(null)
         private set
     var menu by mutableStateOf<QuickMenu?>(null)
@@ -1082,6 +1091,7 @@ class LauncherState(
     fun openSearch() {
         tap()
         query = ""
+        pick = false
         search = true
     }
 
@@ -1098,7 +1108,8 @@ class LauncherState(
     }
 
     fun searchEnter() {
-        matches(query).firstOrNull()?.let { openFromSearch(it, 200f) }
+        val app = matches(query).firstOrNull() ?: return
+        if (pick) setQuick(app) else openFromSearch(app, 200f)
     }
 
     /** Opens a search result. [y] is the row centre in design units. */
@@ -1106,6 +1117,55 @@ class LauncherState(
         openApp(app.display, app.key, app.pkgUser, Pose(28f, y, 0f, 16f / 44f, 0f), "", false) {
             host.launchApp(app, it)
         }
+    }
+
+    // Quick button: one app in the bottom corner on the dial side.
+
+    /** A tap on the quick button. [x] and [y] give the start and the centre of its label in design units. */
+    fun quickTap(x: Float, y: Float) {
+        if (blocked()) return
+        val app = quickApp ?: return openPick()
+        openApp(app.display, app.key, app.pkgUser, Pose(x, y, 0f, 13f / 44f, 0f), "", false) {
+            host.launchApp(app, it)
+        }
+    }
+
+    /** Hold the quick button: pick another app or clear the button. */
+    fun quickHold() {
+        if (blocked()) return
+        fb.click(true)
+        fb.heavy()
+        query = ""
+        pick = true
+        search = true
+    }
+
+    private fun openPick() {
+        openSearch()
+        pick = true
+    }
+
+    fun setQuick(app: AppEntry) {
+        val before = quickKey
+        fb.double()
+        fb.click(false)
+        saveQuick(app.key)
+        search = false
+        if (before != app.key) showToast("${app.display} is on the quick button") { saveQuick(before) }
+    }
+
+    fun clearQuick() {
+        val before = quickKey ?: return
+        fb.double()
+        fb.click(false)
+        saveQuick(null)
+        search = false
+        showToast("cleared the quick button") { saveQuick(before) }
+    }
+
+    private fun saveQuick(key: String?) {
+        quickKey = key
+        prefs.quick = key
     }
 
     // Opening apps.
