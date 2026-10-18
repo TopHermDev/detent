@@ -6,6 +6,7 @@ import androidx.compose.ui.graphics.luminance
 import kotlin.math.cos
 import kotlin.math.max
 import kotlin.math.min
+import kotlin.math.roundToInt
 import kotlin.math.sin
 
 // The design draws a 412 x 892 screen. One design unit is (screen width / 412) px.
@@ -21,20 +22,61 @@ val Ease = CubicBezierEasing(.2f, .8f, .2f, 1f)
 fun mod(a: Int, n: Int) = ((a % n) + n) % n
 fun mod(a: Float, n: Float) = ((a % n) + n) % n
 
-enum class Curve(val radius: Float) { Round(200f), Soft(330f), Flat(560f) }
 enum class Markers { Double, Ticks, Nodes, Dots }
 enum class Side { Right, Left }
 
-// Labels are always radial: each name follows the angle of its row.
-class Layout(val name: String, val curve: Curve, val markers: Markers, val ticksPerApp: Int)
+/**
+ * Radial layouts draw a dial over the wallpaper. The other kinds draw the whole screen as one dot grid:
+ * field puts the names on a dial of dots, lens puts every app on a column of dots, and readout shows the
+ * name in the dot-matrix clock.
+ */
+enum class Kind { Radial, Field, Lens, Readout }
+
+// Radial labels follow the angle of their row.
+class Layout(
+    val name: String,
+    val radius: Float,
+    val markers: Markers,
+    val ticksPerApp: Int,
+    val kind: Kind = Kind.Radial,
+) {
+    val grid get() = kind != Kind.Radial
+
+    /** x of the notch on a right-hand dial. */
+    val ax get() = when (kind) {
+        Kind.Radial -> AX
+        Kind.Field -> 236f
+        Kind.Readout -> 224f
+        Kind.Lens -> LX
+    }
+
+    /** y of the notch. On the grid layouts the notch is a grid dot. */
+    fun cy(hd: Float) = if (grid) snap(476f + (hd - H0) / 2f) else CY0 + (hd - H0) / 2f
+}
 
 val LAYOUTS = listOf(
-    Layout("soft · radial · double", Curve.Soft, Markers.Double, 4),
-    Layout("round · radial · double", Curve.Round, Markers.Double, 5),
-    Layout("soft · radial · ticks", Curve.Soft, Markers.Ticks, 4),
-    Layout("flat · radial · dots", Curve.Flat, Markers.Dots, 6),
-    Layout("flat · radial · nodes", Curve.Flat, Markers.Nodes, 4),
+    Layout("soft · radial · double", 330f, Markers.Double, 4),
+    Layout("round · radial · double", 200f, Markers.Double, 5),
+    Layout("soft · radial · ticks", 330f, Markers.Ticks, 4),
+    Layout("flat · radial · dots", 560f, Markers.Dots, 6),
+    Layout("flat · radial · nodes", 560f, Markers.Nodes, 4),
+    Layout("grid · field", 300f, Markers.Double, 1, Kind.Field),
+    Layout("grid · lens", 300f, Markers.Double, 1, Kind.Lens),
+    Layout("grid · readout", 200f, Markers.Double, 1, Kind.Readout),
 )
+
+// The grid layouts. Grid dots sit every G units, starting GO units from the top left corner.
+const val G = 12f
+const val GO = 8f
+const val LX = 380f   // x of the lens column
+const val LENS_GAP = 24f // distance between two lens rows
+const val RX = 20f    // left edge of the dot-matrix readout
+const val RF = 6f     // readout dot pitch
+const val RC = 62     // readout columns
+const val RR = 14     // readout rows
+
+/** The grid dot nearest to [v] on one axis. */
+fun snap(v: Float) = GO + G * ((v - GO) / G).roundToInt()
 
 data class Cfg(val layout: Int = 0, val theme: Int = 0, val side: Side = Side.Right)
 
@@ -143,8 +185,8 @@ fun handMatrix(p: Palette) = floatArrayOf(
 )
 
 /** Dial geometry for one rim radius. */
-class Geo(val r: Float, val cy: Float) {
-    val cx = AX + r
+class Geo(val r: Float, val cy: Float, ax: Float = AX) {
+    val cx = ax + r
     val step = GAP / r
     val span = min(6.5f, 1.55f / step)
 }
@@ -172,9 +214,12 @@ fun labelRadius(g: Geo, m: Markers) = g.r - when (m) {
  * Position of a label [d] rows away from the selected row. [tx] is the horizontal shift in label widths.
  * [bx] and [by] give the unread dot that trails the name.
  */
-fun labelPose(d: Float, chars: Int, s: Float, g: Geo, m: Markers, left: Boolean): LabelPose {
+fun labelPose(d: Float, chars: Int, s: Float, g: Geo, m: Markers, left: Boolean) =
+    labelPoseAt(d, chars, s, g, labelRadius(g, m), left)
+
+/** [labelPose] for labels at radius [r]. */
+fun labelPoseAt(d: Float, chars: Int, s: Float, g: Geo, r: Float, left: Boolean): LabelPose {
     val ang = d * g.step
-    val r = labelRadius(g, m)
     val x0 = g.cx - r * cos(ang)
     val y = g.cy + r * sin(ang)
     val w = chars * CH * s

@@ -138,13 +138,14 @@ fun Chip(
     weight: FontWeight = FontWeight.Normal,
     offBg: Color = Color.Transparent,
     ms: Int = 200,
+    size: Float = 44f,
 ) {
     val u = LocalUnits.current
     val border by animateColorAsState(if (on) pal.accent else pal.rim2, tween(ms), label = "chipBorder")
     val bg by animateColorAsState(if (on) pal.accent else offBg, tween(ms), label = "chipBg")
     val fg by animateColorAsState(if (on) pal.onAccent else pal.muted2, tween(ms), label = "chipFg")
     val shape = if (square) RoundedCornerShape(u.dp(4f)) else RoundedCornerShape(50)
-    val sized = if (square) Modifier.size(u.dp(44f)) else Modifier.height(u.dp(40f)).padding(horizontal = 0.dp)
+    val sized = if (square) Modifier.size(u.dp(size)) else Modifier.height(u.dp(40f)).padding(horizontal = 0.dp)
     Box(
         sized.clip(shape).background(bg).border(u.dp(1f), border, shape).tap(onClick = onClick)
             .then(if (square) Modifier else Modifier.padding(horizontal = u.dp(padding))),

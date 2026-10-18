@@ -91,6 +91,7 @@ import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.unit.Density
 import androidx.core.view.WindowCompat
 import app.detent.launcher.Ease
+import app.detent.launcher.Kind
 import app.detent.launcher.LauncherState
 import app.detent.launcher.PALETTES
 import app.detent.launcher.Palette
@@ -110,8 +111,8 @@ import java.util.Calendar
 import kotlin.math.max
 import kotlin.math.min
 
-private val DAYS = listOf("sun", "mon", "tue", "wed", "thu", "fri", "sat")
-private val MONTHS = listOf("jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec")
+internal val DAYS = listOf("sun", "mon", "tue", "wed", "thu", "fri", "sat")
+internal val MONTHS = listOf("jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec")
 
 @Composable
 fun DetentRoot(s: LauncherState) {
@@ -129,6 +130,8 @@ fun DetentRoot(s: LauncherState) {
             SideEffect {
                 s.k = u.k
                 s.hd = u.hd
+                s.clockTop = u.clockTop
+                s.searchY = u.searchY
             }
             CompositionLocalProvider(LocalUnits provides u) { Home(s) }
         }
@@ -163,11 +166,18 @@ private fun Home(s: LauncherState) {
             .focusRequester(focus).focusable()
             .onKeyEvent { it.type == KeyEventType.KeyDown && s.key(it.key) },
     ) {
-        Wallpaper(THEMES[wall], pal, s.left, s.customWall)
+        // The grid layouts draw the whole screen as dots, with no wallpaper.
+        val grid = s.layout.grid
+        if (!grid) Wallpaper(THEMES[wall], pal, s.left, s.customWall)
         GestureLayer(s)
-        Clock(s, pal)
-        DialCanvas(s, pal)
-        ScrubLetter(s, pal)
+        if (grid) {
+            DotGrid(s, pal)
+        } else {
+            Clock(s, pal)
+            DialCanvas(s, pal)
+        }
+        // The readout layout shows the letter in its readout.
+        if (s.kind != Kind.Readout) ScrubLetter(s, pal)
         PressRing(s, pal)
         SearchButton(s, pal)
         if (s.ob != null) Onboarding(s, pal, THEMES[live])
@@ -263,13 +273,14 @@ private fun HandArt(pal: Palette, left: Boolean) {
 private fun GestureLayer(s: LauncherState) {
     val u = LocalUnits.current
     val k by rememberUpdatedState(u.k)
+    val mid = s.cy
     Box(
         Modifier.fillMaxSize()
             // The dial sits on a screen edge. Keep the system back swipe off the rows around the notch.
             .systemGestureExclusion { c ->
                 val w = c.size.width.toFloat()
-                val top = (u.cy - 110f) * u.k
-                val bottom = (u.cy + 110f) * u.k
+                val top = (mid - 110f) * u.k
+                val bottom = (mid + 110f) * u.k
                 if (s.left) Rect(0f, top, 56f * u.k, bottom) else Rect(w - 56f * u.k, top, w, bottom)
             }
             .pointerInput(s) {
@@ -379,7 +390,7 @@ private fun ScrubLetter(s: LauncherState, pal: Palette) {
     val on = letters != null
     val alpha by animateFloatAsState(if (on) 1f else 0f, tween(200), label = "scrubAlpha")
     val t by animateFloatAsState(if (on) 1f else 0f, tween(250, easing = Ease), label = "scrubMove")
-    SideBox(s.left, u.cy - 66f, 36f) {
+    SideBox(s.left, s.cy - 66f, 36f) {
         Box(
             Modifier.height(u.dp(132f)).graphicsLayer {
                 this.alpha = alpha
@@ -461,7 +472,8 @@ private fun QuickMenuView(s: LauncherState, pal: Palette) {
     val op by animateFloatAsState(if (s.menuShown) 1f else 0f, tween(180), label = "menuAlpha")
     val t by animateFloatAsState(if (s.menuShown) 1f else 0f, tween(220, easing = Ease), label = "menuMove")
     Box(Modifier.fillMaxSize().graphicsLayer { alpha = veil }.background(pal.veil).tap { s.closeMenu() })
-    SideBox(s.left, u.cy + 30f, 24f) {
+    // Below the selected app. Near the bottom, the menu moves up so that it stays on the screen.
+    SideBox(s.left, min(s.anchorY + 30f, u.hd - u.bottom - 330f), 24f) {
         val shape = RoundedCornerShape(u.dp(16f))
         Column(
             Modifier.width(u.dp(220f))
@@ -506,6 +518,8 @@ private fun MenuItem(label: String, color: Color, onClick: () -> Unit) {
 private fun AppSheet(s: LauncherState, pal: Palette) {
     val u = LocalUnits.current
     val o = s.open ?: return
+    // The grid layouts open apps with their dot ripple.
+    if (o.ripple) return
     val shown = o.phase == Phase.In
     val alpha by animateFloatAsState(if (shown) 1f else 0f, tween(280), label = "sheetAlpha")
     val scale by animateFloatAsState(if (shown) 1f else .985f, tween(400, easing = Ease), label = "sheetScale")
@@ -523,6 +537,7 @@ private fun AppSheet(s: LauncherState, pal: Palette) {
 private fun Title(s: LauncherState, pal: Palette) {
     val u = LocalUnits.current
     val o = s.open ?: return
+    if (o.ripple) return
     val measurer = rememberTextMeasurer()
     val style = remember(u) { textStyle(u, 44f, pal.accent, FontWeight.Light, spacing = -.04f) }
     val prog = remember(o.id) { Animatable(0f) }
