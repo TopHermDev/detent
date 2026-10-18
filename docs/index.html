@@ -1,0 +1,164 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Detent · a home screen you turn</title>
+  <meta name="description" content="Detent is a home screen for Android that you turn. Your apps sit on a dial at the edge of the screen.">
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="Detent">
+  <meta property="og:description" content="A home screen for Android that you turn. Your apps sit on a dial at the edge of the screen.">
+  <meta property="og:url" content="https://bjarneo.github.io/detent/">
+  <meta property="og:image" content="https://bjarneo.github.io/detent/media/home.jpg">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="theme-color" content="#1d2021">
+  <link rel="icon" href="icon.svg" type="image/svg+xml">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500&display=swap">
+  <link rel="stylesheet" href="site.css">
+  <script type="module" src="site.js"></script>
+</head>
+<body>
+  <header class="bar wrap">
+    <a class="brand" href="#top"><img src="icon.svg" alt="" width="28" height="28"><span>detent</span></a>
+    <nav aria-label="Sections">
+      <a href="#layouts">layouts</a>
+      <a href="#themes">themes</a>
+      <a href="#install">install</a>
+      <a href="https://github.com/bjarneo/detent">github</a>
+    </nav>
+  </header>
+
+  <main id="top">
+    <section class="hero wrap">
+      <div class="pitch">
+        <h1>detent<span class="dot">.</span></h1>
+        <p class="lead">a home screen for Android that you turn.</p>
+        <p class="body">Your apps sit on a dial at the edge of the screen. Turn the dial to find an app. Tap the app to open it.</p>
+        <div class="cta">
+          <a class="btn primary" href="https://github.com/bjarneo/detent/releases/latest/download/detent.apk">download the APK</a>
+          <a class="btn" href="https://github.com/bjarneo/detent">source on GitHub</a>
+        </div>
+        <p class="meta"><span id="version">latest release</span> · Android 10 or later · MIT</p>
+      </div>
+
+      <div class="demo" id="demo">
+        <div class="phone">
+          <canvas id="dial" tabindex="0" width="412" height="892"
+            aria-label="Detent demo. Press j or the down arrow to turn the dial. Press Enter to open the app in the notch."></canvas>
+        </div>
+        <div class="controls">
+          <div class="chips" role="group" aria-label="Layout">
+            <button data-chip="0" aria-label="Layout 1">1</button>
+            <button data-chip="1" aria-label="Layout 2">2</button>
+            <button data-chip="2" aria-label="Layout 3">3</button>
+            <button data-chip="3" aria-label="Layout 4">4</button>
+            <button data-chip="4" aria-label="Layout 5">5</button>
+            <button data-chip="5" aria-label="Layout 6">6</button>
+            <button data-chip="6" aria-label="Layout 7">7</button>
+            <button data-chip="7" aria-label="Layout 8">8</button>
+          </div>
+          <span class="layout-name" id="layout-name">soft · radial · double</span>
+          <div class="row">
+            <div class="stepper">
+              <button id="theme-prev" aria-label="Previous theme">‹</button>
+              <span id="theme-name">dusk</span>
+              <button id="theme-next" aria-label="Next theme">›</button>
+            </div>
+            <div class="seg" role="group" aria-label="Dial side">
+              <button data-side="left">left</button>
+              <button data-side="right">right</button>
+            </div>
+          </div>
+        </div>
+        <p class="hint">Drag, flick, or scroll the dial. Tap a name to open it. Hold the dial to jump by letter.</p>
+        <p class="sr" aria-live="polite" id="said"></p>
+      </div>
+    </section>
+
+    <section class="wrap" id="use">
+      <h2>use the dial<span class="dot">.</span></h2>
+      <dl class="gestures">
+        <div><dt>drag or flick the dial</dt><dd>The dial turns. Each app clicks into the notch.</dd></div>
+        <div><dt>tap any app on the dial</dt><dd>The app opens. The dial turns the app into the notch.</dd></div>
+        <div><dt>tap the dial while it turns</dt><dd>The dial stops. No app opens.</dd></div>
+        <div><dt>hold the dial</dt><dd>Letters replace the apps. Slide to a letter and release to jump to it.</dd></div>
+        <div><dt>hold the app in the notch</dt><dd>A menu shows the app shortcuts, <code>app info</code>, and <code>remove from dial</code>.</dd></div>
+        <div><dt>hold the clock</dt><dd>The setup opens: shape, theme, apps, and feel.</dd></div>
+        <div><dt>tap <code>search</code></dt><dd>Search all your apps. Tap <code>+ dial</code> to add an app to the dial.</dd></div>
+        <div><dt><kbd>j</kbd> <kbd>k</kbd> <kbd>Enter</kbd></dt><dd>With a hardware keyboard, <kbd>j</kbd> and <kbd>k</kbd> turn the dial. <kbd>Enter</kbd> opens the app.</dd></div>
+      </dl>
+      <p class="note">The demo on this page does the first 4 gestures and the keys. Your scroll wheel also turns it.</p>
+    </section>
+
+    <section class="wrap" id="video">
+      <h2>see it on a phone<span class="dot">.</span></h2>
+      <p class="intro">This 48-second video shows Detent with the retro-82 theme.</p>
+      <video controls preload="none" playsinline poster="media/home.jpg" width="1280" height="720">
+        <source src="media/detent-promo.mp4" type="video/mp4">
+      </video>
+    </section>
+
+    <section class="wrap" id="layouts">
+      <h2>8 layouts<span class="dot">.</span></h2>
+      <p class="intro">Layouts 1 to 5 put a radial dial over the wallpaper. Layouts 6 to 8 draw the whole screen as one grid of dots. On those, the clock is a dot-matrix readout. Tap a layout to load it in the demo.</p>
+      <div class="layouts">
+        <button class="card" data-layout="0"><canvas></canvas><span class="txt"><span class="n">1</span><strong>soft · radial · double</strong><span>The default. Dots swell toward the notch, with a fainter inner arc.</span></span></button>
+        <button class="card" data-layout="1"><canvas></canvas><span class="txt"><span class="n">2</span><strong>round · radial · double</strong><span>The same dots on a tighter curve.</span></span></button>
+        <button class="card" data-layout="2"><canvas></canvas><span class="txt"><span class="n">3</span><strong>soft · radial · ticks</strong><span>Hairline ticks on a thin rim.</span></span></button>
+        <button class="card" data-layout="3"><canvas></canvas><span class="txt"><span class="n">4</span><strong>flat · radial · dots</strong><span>A dot matrix on a wide curve.</span></span></button>
+        <button class="card" data-layout="4"><canvas></canvas><span class="txt"><span class="n">5</span><strong>flat · radial · nodes</strong><span>Small nodes on a wide curve.</span></span></button>
+        <button class="card" data-layout="5"><canvas></canvas><span class="txt"><span class="n">6</span><strong>grid · field</strong><span>The grid draws the dial. A swell runs through the dots as you turn. The names sit on spokes.</span></span></button>
+        <button class="card" data-layout="6"><canvas></canvas><span class="txt"><span class="n">7</span><strong>grid · lens</strong><span>Each app is one dot in a column at the edge. The column loops and flows through a lens at the notch.</span></span></button>
+        <button class="card" data-layout="7"><canvas></canvas><span class="txt"><span class="n">8</span><strong>grid · readout</strong><span>The dial has no names. Turn the dial and the readout shows the app name.</span></span></button>
+      </div>
+      <p class="note">On the grid layouts, an app opens with a ripple of dots from the notch. Each layout can sit on the right or the left edge.</p>
+    </section>
+
+    <section class="wrap" id="themes">
+      <h2>27 themes<span class="dot">.</span></h2>
+      <p class="intro">The 4 phone themes use a tinted dot-hand art. The 23 Omarchy themes each bring their own wallpaper. Tap a theme to apply it to the demo and to this page.</p>
+      <h3>phone</h3>
+      <div class="swatches" data-group="phone"></div>
+      <h3>omarchy</h3>
+      <div class="swatches" data-group="omarchy"></div>
+      <p class="note">You can also use your own photo as the wallpaper. The theme then sets only the colours.</p>
+    </section>
+
+    <section class="wrap" id="private">
+      <h2>no internet permission<span class="dot">.</span></h2>
+      <p class="intro">Detent does not have the internet permission. It does not send data anywhere.</p>
+      <table>
+        <thead><tr><th>permission</th><th>why Detent needs it</th></tr></thead>
+        <tbody>
+          <tr><td><code>QUERY_ALL_PACKAGES</code></td><td>To list the apps you can open and to find your default apps for the first dial.</td></tr>
+          <tr><td><code>VIBRATE</code></td><td>For haptics.</td></tr>
+          <tr><td><code>SET_WALLPAPER</code></td><td>For the <code>lock screen</code> switch.</td></tr>
+          <tr><td>notification access</td><td>Optional. For unread dots. Detent reads only which apps have notifications. It does not keep the notification text.</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section class="wrap" id="install">
+      <h2>install<span class="dot">.</span></h2>
+      <p class="intro">You need Android 10 or later.</p>
+      <ol class="steps">
+        <li>Download <a href="https://github.com/bjarneo/detent/releases/latest/download/detent.apk"><code>detent.apk</code></a> from the latest release.</li>
+        <li>Open the file on your phone.</li>
+        <li>If Android asks, allow your browser or file manager to install apps.</li>
+        <li>Open Detent and follow the setup.</li>
+        <li>On the <code>ready</code> step, tap <code>set as home app</code>.</li>
+      </ol>
+      <p>To install from a computer, connect the phone with USB debugging on and run this command:</p>
+      <div class="code"><pre><code id="adb">adb install detent.apk</code></pre><button class="copy" data-copy="adb">copy</button></div>
+      <p>To build from source, read the <a href="https://github.com/bjarneo/detent#build-from-source">README</a>.</p>
+    </section>
+  </main>
+
+  <footer class="wrap">
+    <p><a href="https://github.com/bjarneo/detent">source</a> · <a href="https://github.com/bjarneo/detent/releases">releases</a> · <a href="https://github.com/bjarneo/detent/blob/main/LICENSE">MIT license</a></p>
+    <p>The wallpapers and the dot-hand art come from the <a href="https://github.com/basecamp/omarchy">Omarchy</a> themes. The font is <a href="https://github.com/JetBrains/JetBrainsMono">JetBrains Mono</a>.</p>
+  </footer>
+</body>
+</html>
