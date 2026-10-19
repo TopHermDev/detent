@@ -58,6 +58,11 @@ class Prefs(ctx: Context) {
         get() = sp.getString("quick", null)
         set(v) = sp.edit { putString("quick", v) }
 
+    /** Keys of the apps last opened from search, newest first. */
+    var recent: List<String>
+        get() = sp.getString("recent", null)?.split('\n')?.filter { it.isNotEmpty() }.orEmpty()
+        set(v) = sp.edit { putString("recent", v.joinToString("\n")) }
+
     /** The theme and side that the system wallpaper shows now. */
     var appliedWall: String?
         get() = sp.getString("appliedWall", null)

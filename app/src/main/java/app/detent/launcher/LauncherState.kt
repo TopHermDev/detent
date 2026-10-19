@@ -49,6 +49,11 @@ data class OpenApp(
     val ry: Float = 0f,
 )
 
+/** Search shows this many recent apps. */
+private const val RECENT = 5
+/** Search keeps more keys than it shows, so an uninstalled app does not shorten the list. */
+private const val RECENT_KEEP = 10
+
 class Press(val id: Long, val x: Float, val y: Float)
 class QuickMenu(val app: AppEntry, val shortcuts: List<ShortcutInfo>)
 class Toast(val id: Long, val text: String, val undo: (() -> Unit)?)
@@ -1107,6 +1112,15 @@ class LauncherState(
         return all.filter { it.label.startsWith(s) } + all.filter { !it.label.startsWith(s) && s in it.label }
     }
 
+    /** Keys of the apps last opened from search, newest first. The search sheet reads it each time it opens. */
+    private var recentKeys = prefs.recent
+
+    /** The apps last opened from search, newest first. Uninstalled apps drop out. */
+    fun recentApps(): List<AppEntry> {
+        val byKey = repo.apps.associateBy { it.key }
+        return recentKeys.mapNotNull { byKey[it] }.take(RECENT)
+    }
+
     fun searchEnter() {
         val app = matches(query).firstOrNull() ?: return
         if (pick) setQuick(app) else openFromSearch(app, 200f)
@@ -1114,6 +1128,9 @@ class LauncherState(
 
     /** Opens a search result. [y] is the row centre in design units. */
     fun openFromSearch(app: AppEntry, y: Float) {
+        if (open != null) return
+        recentKeys = (listOf(app.key) + recentKeys.filter { it != app.key }).take(RECENT_KEEP)
+        prefs.recent = recentKeys
         openApp(app.display, app.key, app.pkgUser, Pose(28f, y, 0f, 16f / 44f, 0f), "", false) {
             host.launchApp(app, it)
         }

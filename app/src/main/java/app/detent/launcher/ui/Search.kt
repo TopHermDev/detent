@@ -79,6 +79,8 @@ fun SearchSheet(s: LauncherState, pal: Palette) {
         }
         val q = s.query
         val results = remember(q, s.repo.apps) { s.matches(q) }
+        // Read once per open, so the list does not reorder while the sheet closes.
+        val recent = remember(s.repo.apps) { s.recentApps() }
         Column(Modifier.fillMaxSize().background(pal.sheet).tap { }.imePadding()) {
             Spacer(Modifier.height(u.dp(max(60f, u.top + 20f))))
             Row(
@@ -145,12 +147,25 @@ fun SearchSheet(s: LauncherState, pal: Palette) {
                 Modifier.weight(1f).fillMaxWidth(),
                 contentPadding = PaddingValues(start = u.dp(12f), end = u.dp(12f), bottom = u.dp(48f)),
             ) {
+                if (q.isBlank() && recent.isNotEmpty()) {
+                    item(key = "recent") { Section("recent", pal) }
+                    itemsIndexed(recent, key = { _, a -> "recent " + a.key }) { _, app ->
+                        ResultRow(s, pal, app, highlight = false)
+                    }
+                    item(key = "all") { Section("all apps", pal) }
+                }
                 itemsIndexed(results, key = { _, a -> a.key }) { i, app ->
                     ResultRow(s, pal, app, highlight = q.isNotBlank() && i == 0)
                 }
             }
         }
     }
+}
+
+@Composable
+private fun Section(text: String, pal: Palette) {
+    val u = LocalUnits.current
+    Txt(text, 11f, pal.muted2, Modifier.padding(start = u.dp(16f), top = u.dp(12f), bottom = u.dp(4f)), spacing = .06f, maxLines = 1)
 }
 
 @Composable
