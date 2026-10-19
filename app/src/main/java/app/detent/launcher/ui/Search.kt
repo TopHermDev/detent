@@ -6,6 +6,7 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -43,6 +44,7 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
@@ -54,6 +56,7 @@ import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
+import androidx.compose.ui.unit.Dp
 import app.detent.launcher.AppEntry
 import app.detent.launcher.Ease
 import app.detent.launcher.LauncherState
@@ -79,8 +82,7 @@ fun SearchSheet(s: LauncherState, pal: Palette) {
         }
         val q = s.query
         val results = remember(q, s.repo.apps) { s.matches(q) }
-        // Read once per open, so the list does not reorder while the sheet closes.
-        val recent = remember(s.repo.apps) { s.recentApps() }
+        val recent = s.recentApps
         Column(Modifier.fillMaxSize().background(pal.sheet).tap { }.imePadding()) {
             Spacer(Modifier.height(u.dp(max(60f, u.top + 20f))))
             Row(
@@ -148,9 +150,9 @@ fun SearchSheet(s: LauncherState, pal: Palette) {
                 contentPadding = PaddingValues(start = u.dp(12f), end = u.dp(12f), bottom = u.dp(48f)),
             ) {
                 if (q.isBlank() && recent.isNotEmpty()) {
-                    item(key = "recent") { Section("recent", pal) }
+                    item(key = "recent") { Section("recent", pal, if (s.pick) null else "clear") { s.clearRecent() } }
                     itemsIndexed(recent, key = { _, a -> "recent " + a.key }) { _, app ->
-                        ResultRow(s, pal, app, highlight = false)
+                        ResultRow(s, pal, app, highlight = false, recent = true)
                     }
                     item(key = "all") { Section("all apps", pal) }
                 }
@@ -162,14 +164,22 @@ fun SearchSheet(s: LauncherState, pal: Palette) {
     }
 }
 
+/** A section label in the list, with an optional text button at the end. */
 @Composable
-private fun Section(text: String, pal: Palette) {
+private fun Section(text: String, pal: Palette, action: String? = null, onAction: () -> Unit = {}) {
     val u = LocalUnits.current
-    Txt(text, 11f, pal.muted2, Modifier.padding(start = u.dp(16f), top = u.dp(12f), bottom = u.dp(4f)), spacing = .06f, maxLines = 1)
+    Row(Modifier.fillMaxWidth().height(u.dp(40f)).padding(top = u.dp(8f)), verticalAlignment = Alignment.CenterVertically) {
+        Txt(text, 11f, pal.muted2, Modifier.weight(1f).padding(start = u.dp(16f)), spacing = .06f, maxLines = 1)
+        if (action != null) {
+            Box(Modifier.fillMaxHeight().tap(onClick = onAction).padding(horizontal = u.dp(16f)), contentAlignment = Alignment.Center) {
+                Txt(action, 11f, pal.muted, spacing = .06f)
+            }
+        }
+    }
 }
 
 @Composable
-private fun ResultRow(s: LauncherState, pal: Palette, app: AppEntry, highlight: Boolean) {
+private fun ResultRow(s: LauncherState, pal: Palette, app: AppEntry, highlight: Boolean, recent: Boolean = false) {
     val u = LocalUnits.current
     var centre by remember { mutableFloatStateOf(0f) }
     val onDial = app.key in s.dialKeys
@@ -191,6 +201,10 @@ private fun ResultRow(s: LauncherState, pal: Palette, app: AppEntry, highlight: 
         }
         if (s.pick) {
             if (app.key == s.quickKey) Txt("quick app", 11f, pal.muted, Modifier.padding(horizontal = u.dp(16f)), spacing = .04f)
+        } else if (recent) {
+            Box(Modifier.size(u.dp(44f)).tap { s.removeRecent(app) }, contentAlignment = Alignment.Center) {
+                Cross(pal.muted, u.dp(10f))
+            }
         } else if (onDial) {
             Txt("on dial", 11f, pal.muted, Modifier.padding(horizontal = u.dp(16f)), spacing = .04f)
         } else {
@@ -205,5 +219,16 @@ private fun ResultRow(s: LauncherState, pal: Palette, app: AppEntry, highlight: 
                 ) { Txt("+ dial", 11f, pal.fg, maxLines = 1) }
             }
         }
+    }
+}
+
+/** A small cross that removes a row. */
+@Composable
+private fun Cross(color: Color, size: Dp) {
+    val u = LocalUnits.current
+    Canvas(Modifier.size(size)) {
+        val w = u.k * 1.2f
+        drawLine(color, Offset(0f, 0f), Offset(this.size.width, this.size.height), strokeWidth = w, cap = StrokeCap.Round)
+        drawLine(color, Offset(this.size.width, 0f), Offset(0f, this.size.height), strokeWidth = w, cap = StrokeCap.Round)
     }
 }

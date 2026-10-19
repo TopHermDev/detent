@@ -1097,6 +1097,7 @@ class LauncherState(
         tap()
         query = ""
         pick = false
+        recentKeys = prefs.recent
         search = true
     }
 
@@ -1112,13 +1113,35 @@ class LauncherState(
         return all.filter { it.label.startsWith(s) } + all.filter { !it.label.startsWith(s) && s in it.label }
     }
 
-    /** Keys of the apps last opened from search, newest first. The search sheet reads it each time it opens. */
-    private var recentKeys = prefs.recent
+    /**
+     * Keys of the apps last opened from search, newest first. An open from search saves the new order
+     * to [prefs] only. The list takes the new order when search opens again, so it does not reorder while the sheet closes.
+     */
+    private var recentKeys by mutableStateOf(prefs.recent)
 
     /** The apps last opened from search, newest first. Uninstalled apps drop out. */
-    fun recentApps(): List<AppEntry> {
+    val recentApps by derivedStateOf {
         val byKey = repo.apps.associateBy { it.key }
-        return recentKeys.mapNotNull { byKey[it] }.take(RECENT)
+        recentKeys.mapNotNull { byKey[it] }.take(RECENT)
+    }
+
+    fun removeRecent(app: AppEntry) {
+        val before = recentKeys
+        fb.tap()
+        saveRecent(before - app.key)
+        showToast("removed ${app.display} from recent") { saveRecent(before) }
+    }
+
+    fun clearRecent() {
+        val before = recentKeys
+        fb.tap()
+        saveRecent(emptyList())
+        showToast("cleared recent") { saveRecent(before) }
+    }
+
+    private fun saveRecent(keys: List<String>) {
+        recentKeys = keys
+        prefs.recent = keys
     }
 
     fun searchEnter() {
@@ -1129,8 +1152,7 @@ class LauncherState(
     /** Opens a search result. [y] is the row centre in design units. */
     fun openFromSearch(app: AppEntry, y: Float) {
         if (open != null) return
-        recentKeys = (listOf(app.key) + recentKeys.filter { it != app.key }).take(RECENT_KEEP)
-        prefs.recent = recentKeys
+        prefs.recent = (listOf(app.key) + recentKeys.filter { it != app.key }).take(RECENT_KEEP)
         openApp(app.display, app.key, app.pkgUser, Pose(28f, y, 0f, 16f / 44f, 0f), "", false) {
             host.launchApp(app, it)
         }
@@ -1154,6 +1176,7 @@ class LauncherState(
         fb.heavy()
         query = ""
         pick = true
+        recentKeys = prefs.recent
         search = true
     }
 
