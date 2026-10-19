@@ -7,6 +7,7 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -30,6 +31,7 @@ import app.detent.launcher.G
 import app.detent.launcher.GAP
 import app.detent.launcher.GO
 import app.detent.launcher.Geo
+import app.detent.launcher.Hear
 import app.detent.launcher.Kind
 import app.detent.launcher.LENS_GAP
 import app.detent.launcher.LX
@@ -51,6 +53,8 @@ import kotlin.math.abs
 import kotlin.math.atan2
 import kotlin.math.ceil
 import kotlin.math.cos
+import kotlin.math.exp
+import kotlin.math.sin
 import kotlin.math.floor
 import kotlin.math.hypot
 import kotlin.math.max
@@ -80,7 +84,7 @@ private class Dots {
 
 /** The grid layouts: field, lens and readout. The whole screen is one grid of dots. */
 @Composable
-fun DotGrid(s: LauncherState, pal: Palette) {
+fun DotGrid(s: LauncherState, pal: Palette, wave: VoiceWave) {
     val u = LocalUnits.current
     val measurer = rememberTextMeasurer(cacheSize = 160)
     val regular = remember(u) { textStyle(u, 15f, pal.fg, FontWeight.Normal, spacing = .01f) }
@@ -186,8 +190,10 @@ fun DotGrid(s: LauncherState, pal: Palette) {
 
         // Lens geometry. The lens sits at the notch and the column scrolls through it. The lens fades with the dial.
         val lsE = s.ls * dial
-        val lensL = 70 + 60 * lsE
-        val lensK = .9f * lsE
+        // The voice opens the lens wider.
+        val vl = wave.on * (wave.level + .5f * wave.think)
+        val lensL = 70 + 60 * lsE + 40 * vl
+        val lensK = .9f * lsE + .7f * vl
         val top = s.lensTop
         val bottom = s.lensBottom
 
@@ -251,6 +257,11 @@ fun DotGrid(s: LauncherState, pal: Palette) {
                                 r = 1.1f + e2 * (.25f + 1f * f * f + 1f * bump)
                                 a = .12f + e2 * (.1f + .3f * f + .3f * bump)
                             }
+                            // While Detent listens, the voice swells the arc.
+                            val v = wave.swell(th / step) * env
+                            r += v * (if (du >= -9) 3.4f else 1.8f)
+                            a += v * .8f
+                            if (v > .4f && du >= -9) col = 1f
                             a = min(a, 1f)
                             r = 1.2f + (r - 1.2f) * dial
                             a = .16f + (a - .16f) * dial
@@ -317,9 +328,10 @@ fun DotGrid(s: LauncherState, pal: Palette) {
                         a = 1f
                         col = 1f
                     } else {
-                        r = 1.8f * (1 + 1.3f * tt)
-                        a = .5f + .4f * tt
-                        if (unread?.getOrNull(mod(i, n)) == true) col = 1f
+                        val v = wave.swell(i - pos)
+                        r = 1.8f * (1 + 1.3f * tt) + v * 3f
+                        a = min(1f, .5f + .4f * tt + v)
+                        if (unread?.getOrNull(mod(i, n)) == true || v > .4f) col = 1f
                     }
                     r = 1.2f + (r - 1.2f) * dial
                     a = .16f + (a - .16f) * dial
@@ -343,17 +355,34 @@ fun DotGrid(s: LauncherState, pal: Palette) {
             }
         }
 
-        // The dot-matrix readout.
+        // The dot-matrix readout. While Detent listens and no app matches yet, it shows voice bars.
         val rv = s.readout.v
         val racc = s.readout.accent
+        val bw = wave.on * wave.bars
+        val mid = (RR - 1) / 2f
         for (jj in 0 until RR) for (ii in 0 until RC) {
             val idx = jj * RC + ii
             val x = RX + ii * RF
             val y = readY + jj * RF
-            val v = rv[idx]
+            var v = rv[idx]
+            var col = if (racc[idx]) 1f else 0f
+            if (bw > .002f) {
+                // Bars two dots wide with a gap of one dot, mirrored around the middle row. The voice level sets their height.
+                val bi = ii / 3
+                val nb = RC / 3
+                val c = (bi - (nb - 1) / 2f) / ((nb - 1) / 2f)
+                val wv = .5f + .5f * sin(wave.t * 9f - abs(c) * 6f + bi * 1.3f)
+                val idle = wave.listen * .35f * (.5f + .5f * sin(wave.t * 3.5f - abs(c) * 3f))
+                val q = c - sin(wave.t * 2.4f)
+                val scan = wave.think * 4f * exp(-q * q * 20f)
+                val h = idle + (wave.level * (1f + 5.5f * wv) + scan) * exp(-c * c * 1.8f)
+                val bar = if (ii % 3 == 2) 0f else c01(h - abs(jj - mid) + .5f)
+                v = v * (1 - bw) + bar * bw
+                // The tip of each bar takes the accent colour.
+                if (bar > .5f && bw > .5f && abs(jj - mid) + 1.5f > h) col = 1f
+            }
             var r = .85f + 1.75f * v
             var a = (.08f + .92f * v) * read
-            var col = if (racc[idx]) 1f else 0f
             var lit = v > .02f
             if (rr > 0) {
                 val g = ripple(x, y, r, a, 1.6f, 4.5f)
@@ -426,7 +455,7 @@ fun DotGrid(s: LauncherState, pal: Palette) {
         }
     }
 
-    GridDate(s, pal, read * labels)
+    GridDate(s, pal, read * labels, wave)
 }
 
 private fun DrawScope.drawFieldLabels(
@@ -480,8 +509,20 @@ private fun DrawScope.drawFieldLabels(
 
 /** The date under the readout. The readout layout shows the position of the selected app while it reads a name. */
 @Composable
-private fun GridDate(s: LauncherState, pal: Palette, alpha: Float) {
+private fun GridDate(s: LauncherState, pal: Palette, alpha: Float, wave: VoiceWave) {
     val u = LocalUnits.current
+    // While Detent listens, the line shows the words, or the status before the first word.
+    if (s.hear != null) {
+        val words = s.heardText
+        val quiet = words.isEmpty() || s.hear == Hear.Miss
+        Txt(
+            if (quiet) hearStatus(s) else words, if (quiet) 12f else 16f, if (quiet) pal.muted2 else pal.fg,
+            Modifier.place(u, RX, s.readY + 90f).padding(end = u.dp(60f)).graphicsLayer { this.alpha = alpha * wave.on },
+            spacing = if (quiet) .04f else 0f,
+            maxLines = 2,
+        )
+        return
+    }
     val cal = Calendar.getInstance().apply { timeInMillis = s.now }
     val n = s.dialApps.size
     val text = if (s.readName && s.kind == Kind.Readout && s.scrub == null && n > 0) {

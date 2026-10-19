@@ -1,177 +1,139 @@
 package app.detent.launcher.ui
 
-import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.slideInVertically
-import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.lerp
-import androidx.compose.ui.layout.onGloballyPositioned
-import androidx.compose.ui.layout.positionInRoot
-import androidx.compose.ui.text.font.FontWeight
-import app.detent.launcher.Ease
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.graphicsLayer
 import app.detent.launcher.Hear
 import app.detent.launcher.LauncherState
 import app.detent.launcher.Palette
-import app.detent.launcher.Pose
-import app.detent.launcher.W
+import kotlin.math.abs
 import kotlin.math.exp
-import kotlin.math.hypot
-import kotlin.math.max
 import kotlin.math.pow
 import kotlin.math.sin
 
-/** The voice sheet. A field of dots ripples with the voice, and the app name shows as soon as the words name one app. */
-@Composable
-fun VoiceSheet(s: LauncherState, pal: Palette) {
-    val u = LocalUnits.current
-    val move = (40 * u.k).toInt()
-    // The sheet keeps its last phase while it fades out.
-    var phase by remember { mutableStateOf(Hear.Wait) }
-    s.hear?.let { phase = it }
-    AnimatedVisibility(
-        s.hear != null,
-        enter = fadeIn(tween(300)) + slideInVertically(tween(400, easing = Ease)) { move },
-        exit = fadeOut(tween(300)) + slideOutVertically(tween(400, easing = Ease)) { move },
-    ) {
-        Box(Modifier.fillMaxSize().background(pal.sheet).tap { s.voiceSheetTap() }) {
-            Field(s, pal, phase, Modifier)
-            Column(Modifier.fillMaxWidth()) {
-                Spacer(Modifier.height(u.dp(max(60f, u.top + 20f))))
-                Row(
-                    Modifier.fillMaxWidth().height(u.dp(52f)).padding(start = u.dp(28f), end = u.dp(18f)),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    val status = when (phase) {
-                        Hear.Wait -> "starting"
-                        Hear.Talk -> "listening"
-                        Hear.Think -> "thinking"
-                        Hear.Miss -> "no app heard"
-                    }
-                    Txt(status, 11f, pal.muted, Modifier.weight(1f), spacing = .06f, maxLines = 1)
-                    Box(Modifier.height(u.dp(44f)).tap { s.closeVoice() }.padding(horizontal = u.dp(10f)), contentAlignment = Alignment.Center) {
-                        Txt("cancel", 13f, pal.muted2)
-                    }
-                }
-            }
-            Heard(s, pal, phase, Modifier.place(u, 0f, u.hd * .3f))
-        }
+/** The voice animation that the dial, the grid, and the readout share. The values ease, so the layouts fade in and out of it. */
+class VoiceWave {
+    /** Seconds since Detent started to listen. */
+    var t by mutableFloatStateOf(0f)
+
+    /** 1 while Detent listens. */
+    var on by mutableFloatStateOf(0f)
+
+    /** The voice level from 0 to 1. */
+    var level by mutableFloatStateOf(0f)
+
+    /** 1 before the user speaks and while the user speaks. */
+    var listen by mutableFloatStateOf(0f)
+
+    /** 1 while the speech service turns the voice into words. */
+    var think by mutableFloatStateOf(0f)
+
+    /** 1 while the words name no app. The grid readout then shows the voice bars in place of a name. */
+    var bars by mutableFloatStateOf(0f)
+
+    /** How much the voice swells a mark that sits [d] apps from the notch. */
+    fun swell(d: Float): Float {
+        if (on < .002f) return 0f
+        val a = abs(d)
+        // Rings run out from the notch, and the voice level sets their height.
+        val ring = .5f + .5f * sin(t * 7f - a * 1.5f)
+        val talk = level * exp(-a / 2.6f) * (.35f + .65f * ring)
+        val idle = listen * .12f * exp(-a / 1.4f) * (.5f + .5f * sin(t * 3.5f))
+        // While the service thinks, one swell runs up and down the dial.
+        val q = d - 3.5f * sin(t * 2.4f)
+        val scan = think * .8f * exp(-q * q / .9f)
+        return on * (talk + idle + scan)
     }
 }
 
-/** The words so far, and below them the app that they name. */
 @Composable
-private fun Heard(s: LauncherState, pal: Palette, phase: Hear, modifier: Modifier) {
-    val u = LocalUnits.current
-    val words = s.heardText
-    val app = s.heardApp
-    Column(modifier.fillMaxWidth().padding(horizontal = u.dp(28f))) {
-        val text = when {
-            phase == Hear.Miss -> "tap to try again"
-            words.isNotEmpty() -> words
-            phase == Hear.Think -> "…"
-            else -> "say an app name"
-        }
-        val quiet = phase == Hear.Miss || words.isEmpty()
-        Txt(text, 34f, if (quiet) pal.muted else pal.fg, weight = FontWeight.Light, spacing = -.03f, maxLines = 3)
-        Spacer(Modifier.height(u.dp(18f)))
-        // The name keeps its place when no app matches, so the open animation always has a start point.
-        var name by remember { mutableStateOf("") }
-        if (app != null) name = app.display
-        val alpha by animateFloatAsState(if (app != null && phase != Hear.Miss) 1f else 0f, tween(200), label = "heardApp")
-        Row(
-            Modifier.alpha(alpha),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(u.dp(10f)),
-        ) {
-            Box(Modifier.size(u.dp(6f)).clip(CircleShape).background(pal.accent))
-            Txt(
-                name, 16f, pal.accent,
-                Modifier.onGloballyPositioned {
-                    val p = it.positionInRoot()
-                    s.heardPose = Pose(p.x / u.k, (p.y + it.size.height / 2f) / u.k, 0f, 16f / 44f, 0f)
-                },
-                maxLines = 1,
-            )
-        }
-    }
-}
-
-/**
- * A field of dots in the lower half of the sheet. Rings run out from the voice button and swell with the voice level.
- * While the service thinks, one slow ring runs out.
- */
-@Composable
-private fun Field(s: LauncherState, pal: Palette, phase: Hear, modifier: Modifier) {
-    val u = LocalUnits.current
-    var t by remember { mutableFloatStateOf(0f) }
-    var level by remember { mutableFloatStateOf(0f) }
-    LaunchedEffect(Unit) {
+fun rememberVoiceWave(s: LauncherState): VoiceWave {
+    val w = remember { VoiceWave() }
+    val hearing = s.hear != null
+    LaunchedEffect(hearing) {
+        if (hearing) w.t = 0f
         var last = 0L
-        while (true) {
+        while (hearing || w.on > .002f) {
             withFrameNanos { now ->
                 val dt = if (last == 0L) 16f else (now - last) / 1e6f
                 last = now
-                t += dt / 1000f
-                level += (s.voiceLevel - level) * (1f - .8f.pow(dt / 16f))
+                val e = 1f - .82f.pow(dt / 16f)
+                val h = s.hear
+                w.t += dt / 1000f
+                w.on += ((if (h != null) 1f else 0f) - w.on) * e
+                w.level += ((if (h == Hear.Talk) s.voiceLevel else 0f) - w.level) * (1f - .75f.pow(dt / 16f))
+                w.listen += ((if (h == Hear.Wait || h == Hear.Talk) 1f else 0f) - w.listen) * e
+                w.think += ((if (h == Hear.Think) 1f else 0f) - w.think) * e
+                w.bars += ((if (h != null && s.heardApp == null) 1f else 0f) - w.bars) * e
             }
         }
+        w.on = 0f
+        w.level = 0f
+        w.listen = 0f
+        w.think = 0f
+        w.bars = 0f
     }
-    val top = u.hd * .5f
-    val (sx, sy) = s.voiceOrigin
-    Canvas(modifier.fillMaxSize()) {
-        val k = u.k
-        val gap = 18f
-        val cols = (W / gap).toInt()
-        val x0 = (W - (cols - 1) * gap) / 2f
-        var y = top
-        while (y < u.hd - u.bottom - 12f) {
-            // The field fades in from its top edge.
-            val fade = ((y - top) / 120f).coerceIn(0f, 1f)
-            for (i in 0 until cols) {
-                val x = x0 + i * gap
-                val d = hypot(x - sx, y - sy)
-                val amp = when (phase) {
-                    Hear.Wait -> .25f * exp(-d / 60f) * (.5f + .5f * sin(t * 4f))
-                    Hear.Talk -> {
-                        val ring = (.5f + .5f * sin(d * .07f - t * 6f)).pow(3)
-                        exp(-d / 260f) * (.08f + level * ring)
-                    }
-                    Hear.Think -> .7f * exp(-((d - (t * 260f) % 640f) / 34f).let { it * it })
-                    Hear.Miss -> 0f
-                }
-                val c = lerp(pal.dotMin, pal.accent, (amp * 1.6f).coerceIn(0f, 1f))
-                drawCircle(c.copy(alpha = c.alpha * fade), (1.2f + amp * 4.2f) * k, Offset(x * k, y * k))
+    return w
+}
+
+/** The status line while Detent listens. */
+fun hearStatus(s: LauncherState): String = when (s.hear) {
+    Hear.Wait -> "starting"
+    Hear.Think -> "thinking"
+    Hear.Miss -> "no app heard · tap to try again"
+    else -> "listening · tap to stop"
+}
+
+/**
+ * While Detent listens, a tap anywhere on the screen stops the voice, or listens again after a miss.
+ * The cancel button sits where search sits.
+ */
+@Composable
+fun HearLayer(s: LauncherState, pal: Palette) {
+    val u = LocalUnits.current
+    val on = s.hear != null
+    if (on) Box(Modifier.fillMaxSize().tap { s.hearTap() })
+    val alpha by animateFloatAsState(if (on) 1f else 0f, tween(300), label = "hearAlpha")
+    val dy by animateFloatAsState(if (on) 0f else 8f, tween(300), label = "hearY")
+    if (alpha < .004f) return
+    SideBox(s.left, u.searchY, 24f, Modifier.graphicsLayer { this.alpha = alpha; translationY = dy * u.k }) {
+        val shape = RoundedCornerShape(50)
+        Row(
+            Modifier.height(u.dp(44f)).clip(shape).background(pal.btnBg).border(u.dp(1f), pal.rim2, shape)
+                .tap(enabled = on) { s.closeVoice() }
+                .padding(start = u.dp(16f), end = u.dp(18f)),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(u.dp(10f)),
+        ) {
+            Canvas(Modifier.size(u.dp(10f))) {
+                val w = 1.5f * u.k
+                drawLine(pal.fg, Offset(0f, 0f), Offset(size.width, size.height), strokeWidth = w, cap = StrokeCap.Round)
+                drawLine(pal.fg, Offset(size.width, 0f), Offset(0f, size.height), strokeWidth = w, cap = StrokeCap.Round)
             }
-            y += gap
+            Txt("cancel", 13f, pal.fg)
         }
     }
 }

@@ -55,7 +55,7 @@ private const val RECENT = 5
 /** Search keeps more keys than it shows, so an uninstalled app does not shorten the list. */
 private const val RECENT_KEEP = 10
 
-/** The voice sheet: wait for the service, hear the user, think about the words, or report that it heard no app. */
+/** The voice mode: wait for the service, hear the user, think about the words, or report that it heard no app. */
 enum class Hear { Wait, Talk, Think, Miss }
 
 /** What the speech service reports while Detent listens. All calls arrive on the main thread. */
@@ -86,7 +86,7 @@ interface Host {
     /** Starts the speech input of the phone. Calls [done] with what it heard, best guess first. Returns false when the phone has no speech input. */
     fun listen(done: (List<String>) -> Unit): Boolean
 
-    /** True when the phone has a speech service that Detent can use in its own voice sheet. */
+    /** True when the phone has a speech service that Detent can use in its own voice mode. */
     fun canHear(): Boolean
     fun hasMic(): Boolean
     fun askMic(done: (Boolean) -> Unit)
@@ -465,7 +465,7 @@ class LauncherState(
         if (done) {
             pawl = 0f
             if (ob == null && scrub == null) prefs.savePos(index)
-            if (readName && drag == null && open == null) scheduleClock()
+            if (readName && drag == null && open == null && hear == null) scheduleClock()
         }
         return !done
     }
@@ -550,7 +550,7 @@ class LauncherState(
 
     /** The readout layout shows the selected name, or the letter while you scrub. */
     private fun followReadout() {
-        if (kind != Kind.Readout || ob != null) return
+        if (kind != Kind.Readout || ob != null || hear != null) return
         val letters = scrub
         if (letters != null) {
             clockJob?.cancel()
@@ -1197,9 +1197,10 @@ class LauncherState(
         prefs.recent = (listOf(app.key) + prefs.recent.filter { it != app.key }).take(RECENT_KEEP)
     }
 
-    // Voice: say the name of an app to open it.
+    // Voice: say the name of an app to open it. The home screen listens in the style of its layout.
+    // The dial marks swell with the voice, and the dial turns to the app that the words name.
 
-    /** The voice sheet, or null when it is closed. */
+    /** The voice mode, or null when Detent does not listen. */
     var hear by mutableStateOf<Hear?>(null)
         private set
     /** The words that the speech service heard so far. */
@@ -1211,13 +1212,11 @@ class LauncherState(
     /** The voice level from 0 to 1. */
     var voiceLevel by mutableFloatStateOf(0f)
         private set
-    /** The start and the centre of the app name in the voice sheet. The name lifts off from here when the app opens. */
+    /** The start and the centre of the matched name on the radial layouts. An app that is not on the dial lifts off from here. */
     var heardPose: Pose? = null
 
     /** Where the name lifts off when an app opens from the system speech dialog. */
     private var voiceFrom = Pose(W / 2, 0f, 0f, 13f / 44f, 0f)
-    /** The centre of the voice button in design units. The rings in the voice sheet start here. */
-    val voiceOrigin get() = (voiceFrom.x + 6f) to voiceFrom.y
 
     /** A tap on the voice button. [x] and [y] give the centre of the button in design units. */
     fun voiceTap(x: Float, y: Float) {
@@ -1232,8 +1231,8 @@ class LauncherState(
         }
     }
 
-    /** A tap on the voice sheet: stop and use the words so far, or listen again after a miss. */
-    fun voiceSheetTap() {
+    /** A tap on the screen while Detent listens: stop and use the words so far, or listen again after a miss. */
+    fun hearTap() {
         when (hear) {
             Hear.Wait, Hear.Talk -> host.finishHearing()
             Hear.Miss -> {
@@ -1247,9 +1246,14 @@ class LauncherState(
     fun closeVoice() {
         if (hear == null) return
         fb.tap()
+        endHearing()
+        host.stopHearing()
+    }
+
+    private fun endHearing() {
         hear = null
         voiceLevel = 0f
-        host.stopHearing()
+        if (layout.grid && open == null) showClock()
     }
 
     private fun systemVoice() {
@@ -1261,6 +1265,7 @@ class LauncherState(
         heardApp = null
         voiceLevel = 0f
         hear = Hear.Wait
+        if (layout.grid) showClock()
         host.hear(hearEvents)
     }
 
@@ -1277,9 +1282,7 @@ class LauncherState(
         override fun partial(text: String) {
             if (hear == null || text.isBlank()) return
             heardText = text
-            val app = Voice.match(Voice.name(text), repo.apps) { it.label }
-            if (app != null && app.key != heardApp?.key) fb.tick()
-            heardApp = app
+            found(Voice.match(Voice.name(text), repo.apps) { it.label })
         }
 
         override fun end() {
@@ -1294,6 +1297,7 @@ class LauncherState(
             if (said.none { Voice.name(it).isNotEmpty() }) return miss()
             heardText = said.first()
             hear = null
+            voiceLevel = 0f
             heard(said, heardPose ?: voiceFrom)
         }
 
@@ -1302,21 +1306,55 @@ class LauncherState(
             when (error) {
                 SpeechRecognizer.ERROR_NO_MATCH, SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> miss()
                 SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS -> {
-                    hear = null
+                    endHearing()
                     systemVoice()
                 }
                 else -> {
-                    hear = null
+                    endHearing()
                     showToast("voice input failed")
                 }
             }
         }
     }
 
+    /** The words name [app] so far. The dial turns to it, and the grid readout shows its name. */
+    private fun found(app: AppEntry?) {
+        if (app?.key == heardApp?.key) return
+        heardApp = app
+        if (app == null) {
+            if (layout.grid) showClock()
+            return
+        }
+        fb.tick()
+        if (layout.grid) {
+            clockJob?.cancel()
+            readName = true
+            readout.set(app.display, 1, 3, true, SystemClock.uptimeMillis(), false)
+        }
+        val row = dialRow(app)
+        if (row != null) {
+            target = row.toFloat()
+            spin = Spin.Settle
+        }
+        run()
+    }
+
+    /** The row on the dial nearest to the notch that holds [app], or null when the app is not on the dial. */
+    private fun dialRow(app: AppEntry): Int? {
+        val apps = dialApps
+        val i = apps.indexOfFirst { it.key == app.key }
+        if (i < 0) return null
+        val n = apps.size
+        val base = (if (spin == Spin.Settle) target else pos).roundToInt()
+        var d = mod(i - base, n)
+        if (d > n / 2) d -= n
+        return base + d
+    }
+
     private fun miss() {
         hear = Hear.Miss
         voiceLevel = 0f
-        heardApp = null
+        found(null)
         fb.double()
     }
 
@@ -1326,14 +1364,24 @@ class LauncherState(
         if (names.isEmpty() || blocked()) return
         val app = names.firstNotNullOfOrNull { n -> Voice.match(n, repo.apps) { it.label } }
         if (app == null) {
+            if (layout.grid) showClock()
             openSearch()
             query = names.first()
             return
         }
         heardApp = app
         markRecent(app)
-        openApp(app.display, app.key, app.pkgUser, from, "", false) { host.launchApp(app, it) }
+        // An app on the dial opens from the dial, like a tap on its name.
+        val row = dialRow(app)
+        if (row != null) {
+            launchAt(row)
+        } else {
+            openApp(app.display, app.key, app.pkgUser, if (layout.grid) readFrom() else from, "", false) { host.launchApp(app, it) }
+        }
     }
+
+    /** The name in the grid readout. An app that is not on the dial lifts off from here. */
+    private fun readFrom() = Pose(RX, readY + 6.5f * RF, 0f, 20f / 44f, 0f)
 
     // Quick button: one app in the bottom corner on the dial side.
 

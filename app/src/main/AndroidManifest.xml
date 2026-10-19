@@ -3,7 +3,7 @@
     xmlns:tools="http://schemas.android.com/tools">
 
     <uses-permission android:name="android.permission.VIBRATE" />
-    <!-- The voice button. Detent hears only while the voice sheet is open. -->
+    <!-- The mic button. The microphone is on only while Detent listens. -->
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <!-- Copies the theme to the lock screen and the system wallpaper. -->
     <uses-permission android:name="android.permission.SET_WALLPAPER" />

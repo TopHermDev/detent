@@ -94,14 +94,17 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.drawText
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.unit.Density
 import androidx.core.view.WindowCompat
+import app.detent.launcher.Hear
 import app.detent.launcher.Ease
 import app.detent.launcher.Kind
 import app.detent.launcher.LauncherState
 import app.detent.launcher.PALETTES
 import app.detent.launcher.Palette
+import app.detent.launcher.Pose
 import app.detent.launcher.Phase
 import app.detent.launcher.Spin
 import app.detent.launcher.Step
@@ -175,23 +178,24 @@ private fun Home(s: LauncherState) {
     ) {
         // The grid layouts draw the whole screen as dots, with no wallpaper.
         val grid = s.layout.grid
+        val wave = rememberVoiceWave(s)
         if (!grid) Wallpaper(THEMES[wall], pal, s.left, s.customWall)
         GestureLayer(s)
         if (grid) {
-            DotGrid(s, pal)
+            DotGrid(s, pal, wave)
         } else {
             Clock(s, pal)
-            DialCanvas(s, pal)
+            DialCanvas(s, pal, wave)
         }
         // The readout layout shows the letter in its readout.
         if (s.kind != Kind.Readout) ScrubLetter(s, pal)
         PressRing(s, pal)
         SearchButton(s, pal)
         QuickButton(s, pal)
+        HearLayer(s, pal)
         if (s.ob != null) Onboarding(s, pal, THEMES[live])
         QuickMenuView(s, pal)
         SearchSheet(s, pal)
-        VoiceSheet(s, pal)
         AppSheet(s, pal)
         Title(s, pal)
         ToastView(s, pal)
@@ -353,13 +357,52 @@ private fun Clock(s: LauncherState, pal: Palette) {
     }
     val time = hour + ":" + cal.get(Calendar.MINUTE).toString().padStart(2, '0')
     val date = "${DAYS[cal.get(Calendar.DAY_OF_WEEK) - 1]} ${cal.get(Calendar.DAY_OF_MONTH)} ${MONTHS[cal.get(Calendar.MONTH)]}"
-    SideBox(s.left, u.clockTop, 28f, Modifier.graphicsLayer { this.alpha = alpha }) {
+    // While Detent listens, the words take the place of the clock.
+    val hear by animateFloatAsState(if (s.hear != null) 1f else 0f, tween(300), label = "clockHear")
+    if (hear < .996f) {
+        SideBox(s.left, u.clockTop, 28f, Modifier.graphicsLayer { this.alpha = alpha * (1 - hear) }) {
+            Column(
+                horizontalAlignment = if (s.left) Alignment.End else Alignment.Start,
+                verticalArrangement = Arrangement.spacedBy(u.dp(6f)),
+            ) {
+                Txt(time, 68f, pal.fg, weight = FontWeight.Light, spacing = -.05f, line = 1f)
+                Txt(date, 13f, pal.muted2, spacing = .02f)
+            }
+        }
+    }
+    if (hear > .004f) Heard(s, pal, Modifier.graphicsLayer { this.alpha = hear; translationY = (1 - hear) * 6f * u.k })
+}
+
+/** The words that Detent heard, in the place of the clock. The app that they name shows below them. */
+@Composable
+private fun Heard(s: LauncherState, pal: Palette, modifier: Modifier) {
+    val u = LocalUnits.current
+    val words = s.heardText
+    val app = s.heardApp
+    val miss = s.hear == Hear.Miss
+    val end = if (s.left) TextAlign.End else TextAlign.Start
+    SideBox(s.left, u.clockTop, 28f, modifier) {
         Column(
             horizontalAlignment = if (s.left) Alignment.End else Alignment.Start,
-            verticalArrangement = Arrangement.spacedBy(u.dp(6f)),
+            verticalArrangement = Arrangement.spacedBy(u.dp(10f)),
         ) {
-            Txt(time, 68f, pal.fg, weight = FontWeight.Light, spacing = -.05f, line = 1f)
-            Txt(date, 13f, pal.muted2, spacing = .02f)
+            val quiet = miss || words.isEmpty()
+            Txt(
+                if (quiet) "say an app name" else words, 34f, if (quiet) pal.muted else pal.fg,
+                weight = FontWeight.Light, spacing = -.03f, line = 1.1f, align = end, maxLines = 3,
+            )
+            if (app != null && !miss) {
+                Txt(
+                    app.display, 13f, pal.accent,
+                    Modifier.onGloballyPositioned {
+                        val p = it.positionInRoot()
+                        s.heardPose = Pose(p.x / u.k, (p.y + it.size.height / 2f) / u.k, 0f, 13f / 44f, 0f)
+                    },
+                    spacing = .02f, maxLines = 1,
+                )
+            } else {
+                Txt(hearStatus(s), 13f, pal.muted2, spacing = .02f, maxLines = 1)
+            }
         }
     }
 }
