@@ -3,6 +3,8 @@
     xmlns:tools="http://schemas.android.com/tools">
 
     <uses-permission android:name="android.permission.VIBRATE" />
+    <!-- The voice button. Detent hears only while the voice sheet is open. -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <!-- Copies the theme to the lock screen and the system wallpaper. -->
     <uses-permission android:name="android.permission.SET_WALLPAPER" />
     <!-- A home screen lists every launchable app and resolves the default apps for the first dial. -->

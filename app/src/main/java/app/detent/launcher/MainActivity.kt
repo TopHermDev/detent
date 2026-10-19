@@ -1,17 +1,22 @@
 package app.detent.launcher
 
+import android.Manifest
 import android.app.ActivityOptions
 import android.app.role.RoleManager
 import android.content.ActivityNotFoundException
 import android.content.ComponentName
 import android.content.Intent
 import android.content.pm.LauncherApps
+import android.content.pm.PackageManager
 import android.content.pm.ShortcutInfo
 import android.graphics.Color
 import android.graphics.Rect
 import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
+import android.speech.RecognitionListener
+import android.speech.RecognizerIntent
+import android.speech.SpeechRecognizer
 import android.text.format.DateFormat
 import android.util.DisplayMetrics
 import androidx.activity.ComponentActivity
@@ -54,6 +59,21 @@ class MainActivity : ComponentActivity(), Host {
         }
     }
 
+    private var heardDone: ((List<String>) -> Unit)? = null
+    private val speech = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { r ->
+        val done = heardDone ?: return@registerForActivityResult
+        heardDone = null
+        val heard = if (r.resultCode == RESULT_OK) r.data?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS) else null
+        done(heard.orEmpty())
+    }
+
+    private var micDone: ((Boolean) -> Unit)? = null
+    private val micRequest = registerForActivityResult(ActivityResultContracts.RequestPermission()) { ok ->
+        micDone?.invoke(ok)
+        micDone = null
+    }
+    private var recognizer: SpeechRecognizer? = null
+
     override fun onCreate(savedInstanceState: Bundle?) {
         val bars = SystemBarStyle.auto(Color.TRANSPARENT, Color.TRANSPARENT)
         enableEdgeToEdge(bars, bars)
@@ -91,6 +111,7 @@ class MainActivity : ComponentActivity(), Host {
     }
 
     override fun onDestroy() {
+        stopHearing()
         repo.stop()
         state.release()
         scope.cancel()
@@ -167,6 +188,78 @@ class MainActivity : ComponentActivity(), Host {
             pickDone = null
             done(null, true)
         }
+    }
+
+    override fun listen(done: (List<String>) -> Unit): Boolean {
+        val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH)
+            .putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+            .putExtra(RecognizerIntent.EXTRA_PROMPT, "say an app name")
+            .putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 5)
+        heardDone = done
+        return try {
+            speech.launch(intent)
+            true
+        } catch (e: ActivityNotFoundException) {
+            heardDone = null
+            false
+        }
+    }
+
+    override fun canHear() = SpeechRecognizer.isRecognitionAvailable(this)
+
+    override fun hasMic() = checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
+
+    override fun askMic(done: (Boolean) -> Unit) {
+        micDone = done
+        micRequest.launch(Manifest.permission.RECORD_AUDIO)
+    }
+
+    override fun hear(events: HearEvents) {
+        stopHearing()
+        val r = SpeechRecognizer.createSpeechRecognizer(this)
+        recognizer = r
+        // Events from a recognizer that Detent stopped do not count.
+        fun live() = recognizer === r
+        fun texts(b: Bundle?) = b?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION).orEmpty()
+        r.setRecognitionListener(object : RecognitionListener {
+            override fun onReadyForSpeech(params: Bundle?) { if (live()) events.ready() }
+            override fun onBeginningOfSpeech() {}
+            override fun onRmsChanged(rmsdB: Float) { if (live()) events.level(rmsdB) }
+            override fun onBufferReceived(buffer: ByteArray?) {}
+            override fun onEndOfSpeech() { if (live()) events.end() }
+            override fun onPartialResults(partialResults: Bundle?) {
+                if (live()) texts(partialResults).firstOrNull()?.let(events::partial)
+            }
+            override fun onResults(results: Bundle?) {
+                if (!live()) return
+                stopHearing()
+                events.results(texts(results))
+            }
+            override fun onError(error: Int) {
+                if (!live()) return
+                stopHearing()
+                events.failed(error)
+            }
+            override fun onEvent(eventType: Int, params: Bundle?) {}
+        })
+        r.startListening(
+            Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH)
+                .putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+                .putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
+                .putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 5)
+                .putExtra(RecognizerIntent.EXTRA_CALLING_PACKAGE, packageName),
+        )
+    }
+
+    override fun finishHearing() {
+        recognizer?.stopListening()
+    }
+
+    override fun stopHearing() {
+        val r = recognizer ?: return
+        recognizer = null
+        r.cancel()
+        r.destroy()
     }
 
     override fun cleanWallpapers(keep: String?) {

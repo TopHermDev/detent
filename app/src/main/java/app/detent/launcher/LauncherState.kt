@@ -3,6 +3,7 @@ package app.detent.launcher
 import android.content.pm.ShortcutInfo
 import android.graphics.Rect
 import android.os.SystemClock
+import android.speech.SpeechRecognizer
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
@@ -54,6 +55,19 @@ private const val RECENT = 5
 /** Search keeps more keys than it shows, so an uninstalled app does not shorten the list. */
 private const val RECENT_KEEP = 10
 
+/** The voice sheet: wait for the service, hear the user, think about the words, or report that it heard no app. */
+enum class Hear { Wait, Talk, Think, Miss }
+
+/** What the speech service reports while Detent listens. All calls arrive on the main thread. */
+interface HearEvents {
+    fun ready()
+    fun level(db: Float)
+    fun partial(text: String)
+    fun end()
+    fun results(said: List<String>)
+    fun failed(error: Int)
+}
+
 class Press(val id: Long, val x: Float, val y: Float)
 class QuickMenu(val app: AppEntry, val shortcuts: List<ShortcutInfo>)
 class Toast(val id: Long, val text: String, val undo: (() -> Unit)?)
@@ -68,6 +82,23 @@ interface Host {
     fun hasNotificationAccess(): Boolean
     fun openNotificationAccess()
     fun is24Hour(): Boolean
+
+    /** Starts the speech input of the phone. Calls [done] with what it heard, best guess first. Returns false when the phone has no speech input. */
+    fun listen(done: (List<String>) -> Unit): Boolean
+
+    /** True when the phone has a speech service that Detent can use in its own voice sheet. */
+    fun canHear(): Boolean
+    fun hasMic(): Boolean
+    fun askMic(done: (Boolean) -> Unit)
+
+    /** Starts the speech service. The service reports to [events] until it gives results or fails. */
+    fun hear(events: HearEvents)
+
+    /** Stops the microphone and keeps what the service heard so far. */
+    fun finishHearing()
+
+    /** Stops the speech service and drops what it heard. */
+    fun stopHearing()
 
     /**
      * Sets the lock screen and system wallpaper off the main thread, then calls [done] on the main thread.
@@ -319,17 +350,21 @@ class LauncherState(
         }
         drag = null
         if (menu != null) closeMenu()
+        // The microphone stays on only while Detent is in front.
+        if (hear != null) closeVoice()
     }
 
     /** The home button while the launcher is already in front. */
     fun onHome() {
         if (menu != null) closeMenu()
         if (search) closeSearch()
+        if (hear != null) closeVoice()
     }
 
     fun back() {
         when {
             open != null -> close()
+            hear != null -> closeVoice()
             menu != null -> closeMenu()
             search -> closeSearch()
             ob in Step.SHAPE..Step.FEEL -> obBack()
@@ -560,7 +595,7 @@ class LauncherState(
     // Gestures. All coordinates are design units.
 
     private fun blocked() =
-        open != null || search || menu != null || ob == Step.WELCOME || ob == Step.APPS
+        open != null || search || hear != null || menu != null || ob == Step.WELCOME || ob == Step.APPS
 
     private fun mirX(x: Float) = if (left) W - x else x
 
@@ -1152,10 +1187,152 @@ class LauncherState(
     /** Opens a search result. [y] is the row centre in design units. */
     fun openFromSearch(app: AppEntry, y: Float) {
         if (open != null) return
-        prefs.recent = (listOf(app.key) + recentKeys.filter { it != app.key }).take(RECENT_KEEP)
+        markRecent(app)
         openApp(app.display, app.key, app.pkgUser, Pose(28f, y, 0f, 16f / 44f, 0f), "", false) {
             host.launchApp(app, it)
         }
+    }
+
+    private fun markRecent(app: AppEntry) {
+        prefs.recent = (listOf(app.key) + prefs.recent.filter { it != app.key }).take(RECENT_KEEP)
+    }
+
+    // Voice: say the name of an app to open it.
+
+    /** The voice sheet, or null when it is closed. */
+    var hear by mutableStateOf<Hear?>(null)
+        private set
+    /** The words that the speech service heard so far. */
+    var heardText by mutableStateOf("")
+        private set
+    /** The app that the words name so far. */
+    var heardApp by mutableStateOf<AppEntry?>(null)
+        private set
+    /** The voice level from 0 to 1. */
+    var voiceLevel by mutableFloatStateOf(0f)
+        private set
+    /** The start and the centre of the app name in the voice sheet. The name lifts off from here when the app opens. */
+    var heardPose: Pose? = null
+
+    /** Where the name lifts off when an app opens from the system speech dialog. */
+    private var voiceFrom = Pose(W / 2, 0f, 0f, 13f / 44f, 0f)
+    /** The centre of the voice button in design units. The rings in the voice sheet start here. */
+    val voiceOrigin get() = (voiceFrom.x + 6f) to voiceFrom.y
+
+    /** A tap on the voice button. [x] and [y] give the centre of the button in design units. */
+    fun voiceTap(x: Float, y: Float) {
+        if (blocked()) return
+        tap()
+        voiceFrom = Pose(x - 6f, y, 0f, 13f / 44f, 0f)
+        when {
+            !host.canHear() -> systemVoice()
+            host.hasMic() -> startHearing()
+            // Without the microphone, the system speech dialog still works.
+            else -> host.askMic { ok -> if (ok) startHearing() else systemVoice() }
+        }
+    }
+
+    /** A tap on the voice sheet: stop and use the words so far, or listen again after a miss. */
+    fun voiceSheetTap() {
+        when (hear) {
+            Hear.Wait, Hear.Talk -> host.finishHearing()
+            Hear.Miss -> {
+                tap()
+                startHearing()
+            }
+            else -> {}
+        }
+    }
+
+    fun closeVoice() {
+        if (hear == null) return
+        fb.tap()
+        hear = null
+        voiceLevel = 0f
+        host.stopHearing()
+    }
+
+    private fun systemVoice() {
+        if (!host.listen { heard(it, voiceFrom) }) showToast("this phone has no voice input")
+    }
+
+    private fun startHearing() {
+        heardText = ""
+        heardApp = null
+        voiceLevel = 0f
+        hear = Hear.Wait
+        host.hear(hearEvents)
+    }
+
+    private val hearEvents = object : HearEvents {
+        override fun ready() {
+            if (hear == Hear.Wait) hear = Hear.Talk
+        }
+
+        override fun level(db: Float) {
+            // The service reports about -2 dB in silence and about 10 dB for clear speech.
+            if (hear == Hear.Talk) voiceLevel = ((db + 2f) / 12f).coerceIn(0f, 1f)
+        }
+
+        override fun partial(text: String) {
+            if (hear == null || text.isBlank()) return
+            heardText = text
+            val app = Voice.match(Voice.name(text), repo.apps) { it.label }
+            if (app != null && app.key != heardApp?.key) fb.tick()
+            heardApp = app
+        }
+
+        override fun end() {
+            if (hear == Hear.Wait || hear == Hear.Talk) {
+                hear = Hear.Think
+                voiceLevel = 0f
+            }
+        }
+
+        override fun results(said: List<String>) {
+            if (hear == null) return
+            if (said.none { Voice.name(it).isNotEmpty() }) return miss()
+            heardText = said.first()
+            hear = null
+            heard(said, heardPose ?: voiceFrom)
+        }
+
+        override fun failed(error: Int) {
+            if (hear == null) return
+            when (error) {
+                SpeechRecognizer.ERROR_NO_MATCH, SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> miss()
+                SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS -> {
+                    hear = null
+                    systemVoice()
+                }
+                else -> {
+                    hear = null
+                    showToast("voice input failed")
+                }
+            }
+        }
+    }
+
+    private fun miss() {
+        hear = Hear.Miss
+        voiceLevel = 0f
+        heardApp = null
+        fb.double()
+    }
+
+    /** Opens the app that [said] names. With no sure match, search shows the words. */
+    private fun heard(said: List<String>, from: Pose) {
+        val names = said.map(Voice::name).filter { it.isNotEmpty() }
+        if (names.isEmpty() || blocked()) return
+        val app = names.firstNotNullOfOrNull { n -> Voice.match(n, repo.apps) { it.label } }
+        if (app == null) {
+            openSearch()
+            query = names.first()
+            return
+        }
+        heardApp = app
+        markRecent(app)
+        openApp(app.display, app.key, app.pkgUser, from, "", false) { host.launchApp(app, it) }
     }
 
     // Quick button: one app in the bottom corner on the dial side.

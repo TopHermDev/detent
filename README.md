@@ -38,8 +38,9 @@ adb install detent.apk
 | Tap `search` | Search all your apps. The 5 apps that you last opened from search sit at the top. Tap the cross on a recent app to remove it, or tap `clear`. Tap `+ dial` to add an app to the dial. |
 | Tap the quick button | The quick app opens. If the button has no app, pick one. |
 | Hold the quick button | Pick a different quick app, or tap `clear`. |
+| Tap the mic button and say an app name | When the words name one app, the app opens. If not, search opens with the words. |
 
-The quick button sits in the bottom corner on the dial side. It holds one app that you need fast, such as the camera.
+The quick button sits in the bottom corner on the dial side. It holds one app that you need fast, such as the camera. The mic button sits between `search` and the quick button.
 
 With a hardware keyboard, `j` and `k` turn the dial. `l` or `Enter` opens the app. `/` opens search. `Esc` goes back.
 
@@ -108,11 +109,14 @@ If Android shows "Restricted setting" when you allow notification access, open t
 
 Detent does not have the internet permission. It does not send data anywhere.
 
+The mic button uses the speech service of your phone, such as Speech Services by Google. That service turns your voice into text and gives Detent only the text. The service is a separate app with its own permissions.
+
 | Permission | Why Detent needs it |
 | --- | --- |
 | `QUERY_ALL_PACKAGES` | To list all the apps you can open and to find your default apps for the first dial. |
 | `VIBRATE` | For haptics. |
 | `SET_WALLPAPER` | For the `lock screen` switch. |
+| `RECORD_AUDIO` | Optional. For the mic button. The microphone is on only while the voice sheet is open. If you do not allow it, the mic button opens the speech dialog of your phone. |
 | Notification access | Optional. For unread dots. Detent reads only which apps have notifications and when they arrived. It does not keep the notification text. |
 
 ## Build from source

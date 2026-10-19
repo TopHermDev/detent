@@ -60,8 +60,10 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
@@ -88,6 +90,8 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.drawText
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.rememberTextMeasurer
@@ -187,6 +191,7 @@ private fun Home(s: LauncherState) {
         if (s.ob != null) Onboarding(s, pal, THEMES[live])
         QuickMenuView(s, pal)
         SearchSheet(s, pal)
+        VoiceSheet(s, pal)
         AppSheet(s, pal)
         Title(s, pal)
         ToastView(s, pal)
@@ -362,25 +367,56 @@ private fun Clock(s: LauncherState, pal: Palette) {
 @Composable
 private fun SearchButton(s: LauncherState, pal: Palette) {
     val u = LocalUnits.current
-    val homeIdle = s.ob == null && !s.search && s.open == null
+    val homeIdle = s.ob == null && !s.search && s.hear == null && s.open == null
     val shown = homeIdle && s.scrub == null
     val alpha by animateFloatAsState(if (shown) 1f else 0f, tween(300), label = "searchAlpha")
     val dy by animateFloatAsState(if (shown) 0f else 8f, tween(300), label = "searchY")
     SideBox(s.left, u.searchY, 24f, Modifier.graphicsLayer { this.alpha = alpha; translationY = dy * u.k }) {
-        val shape = RoundedCornerShape(50)
-        Row(
-            Modifier.height(u.dp(44f)).clip(shape).background(pal.btnBg).border(u.dp(1f), pal.rim2, shape)
-                .tap(enabled = homeIdle) { s.openSearch() }
-                .padding(start = u.dp(14f), end = u.dp(18f)),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(u.dp(10f)),
-        ) {
-            Canvas(Modifier.size(u.dp(14f))) {
-                val k = u.k
-                drawCircle(pal.fg, 4.25f * k, Offset(5f * k, 5f * k), style = Stroke(1.5f * k))
-                drawLine(pal.fg, Offset(8.5f * k, 8.5f * k), Offset(12.74f * k, 12.74f * k), strokeWidth = 1.5f * k)
+        // The voice button sits between search and the quick button.
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(u.dp(10f))) {
+            if (s.left) VoiceButton(s, pal, homeIdle)
+            val shape = RoundedCornerShape(50)
+            Row(
+                Modifier.height(u.dp(44f)).clip(shape).background(pal.btnBg).border(u.dp(1f), pal.rim2, shape)
+                    .tap(enabled = homeIdle) { s.openSearch() }
+                    .padding(start = u.dp(14f), end = u.dp(18f)),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(u.dp(10f)),
+            ) {
+                Canvas(Modifier.size(u.dp(14f))) {
+                    val k = u.k
+                    drawCircle(pal.fg, 4.25f * k, Offset(5f * k, 5f * k), style = Stroke(1.5f * k))
+                    drawLine(pal.fg, Offset(8.5f * k, 8.5f * k), Offset(12.74f * k, 12.74f * k), strokeWidth = 1.5f * k)
+                }
+                Txt("search", 13f, pal.fg)
             }
-            Txt("search", 13f, pal.fg)
+            if (!s.left) VoiceButton(s, pal, homeIdle)
+        }
+    }
+}
+
+/** The voice button. Say the name of an app to open it. */
+@Composable
+private fun VoiceButton(s: LauncherState, pal: Palette, idle: Boolean) {
+    val u = LocalUnits.current
+    // The centre of the button in design units.
+    var centre by remember { mutableStateOf(Offset.Zero) }
+    Box(
+        Modifier.size(u.dp(44f)).clip(CircleShape).background(pal.btnBg).border(u.dp(1f), pal.rim2, CircleShape)
+            .onGloballyPositioned {
+                val p = it.positionInRoot()
+                centre = Offset((p.x + it.size.width / 2f) / u.k, (p.y + it.size.height / 2f) / u.k)
+            }
+            .semantics { contentDescription = "voice" }
+            .tap(enabled = idle) { s.voiceTap(centre.x, centre.y) },
+        contentAlignment = Alignment.Center,
+    ) {
+        Canvas(Modifier.size(u.dp(14f))) {
+            val k = u.k
+            val line = Stroke(1.5f * k)
+            drawRoundRect(pal.fg, Offset(4.5f * k, .75f * k), Size(5f * k, 8f * k), CornerRadius(2.5f * k), style = line)
+            drawArc(pal.fg, 0f, 180f, false, Offset(2f * k, 3.5f * k), Size(10f * k, 8f * k), style = line)
+            drawLine(pal.fg, Offset(7f * k, 11.5f * k), Offset(7f * k, 13.5f * k), strokeWidth = 1.5f * k)
         }
     }
 }
@@ -389,7 +425,7 @@ private fun SearchButton(s: LauncherState, pal: Palette) {
 @Composable
 private fun QuickButton(s: LauncherState, pal: Palette) {
     val u = LocalUnits.current
-    val homeIdle = s.ob == null && !s.search && s.open == null
+    val homeIdle = s.ob == null && !s.search && s.hear == null && s.open == null
     val idle by rememberUpdatedState(homeIdle)
     val shown = homeIdle && s.scrub == null
     val alpha by animateFloatAsState(if (shown) 1f else 0f, tween(300), label = "quickAlpha")

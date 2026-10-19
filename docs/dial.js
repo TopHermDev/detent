@@ -565,8 +565,9 @@ export class Dial {
 
   onDown(x, y) {
     if (this.open) return;
-    // The quick button takes its own taps.
-    if (this.onQuick(x, y)) { this.quickDown = true; return; }
+    // The quick button and the voice button take their own taps.
+    if (this.onQuick(x, y)) { this.btnDown = 'quick'; return; }
+    if (this.onVoice(x, y)) { this.btnDown = 'voice'; return; }
     const t = performance.now();
     const d = {
       x0: x, y0: y, y, t0: t, moved: false, scrub: false, samples: [[t, this.pos]],
@@ -585,7 +586,7 @@ export class Dial {
   }
 
   onMove(x, y) {
-    if (this.quickDown) return;
+    if (this.btnDown) return;
     const d = this.drag;
     if (!d) return;
     if (!d.moved && (Math.abs(y - d.y0) > 6 || Math.abs(x - d.x0) > 6)) {
@@ -602,9 +603,11 @@ export class Dial {
 
   onUp(x, y) {
     clearTimeout(this.press);
-    if (this.quickDown) {
-      this.quickDown = false;
-      if (this.onQuick(x, y)) this.openQuick();
+    if (this.btnDown) {
+      const b = this.btnDown;
+      this.btnDown = null;
+      if (b === 'quick' && this.onQuick(x, y)) this.openQuick();
+      if (b === 'voice' && this.onVoice(x, y)) this.onChange({ voice: true });
       return;
     }
     const d = this.drag;
@@ -628,7 +631,7 @@ export class Dial {
 
   onCancel() {
     clearTimeout(this.press);
-    this.quickDown = false;
+    this.btnDown = null;
     const d = this.drag;
     if (!d) return;
     this.drag = null;
@@ -752,6 +755,25 @@ export class Dial {
     this.run();
   }
 
+  // The voice button sits between search and the quick button. The demo has no microphone.
+
+  searchBox() {
+    this.font(13, 400, 0);
+    const w = 14 + 14 + 10 + this.g.measureText('search').width + 18;
+    return { x: this.left ? W - 24 - w : 24, y: SEARCH_Y, w, h: 44 };
+  }
+
+  voiceBox() {
+    const s = this.searchBox();
+    return { x: this.left ? s.x - 10 - 44 : s.x + s.w + 10, y: SEARCH_Y, w: 44, h: 44 };
+  }
+
+  onVoice(x, y) {
+    if (this.a.search < .5) return false;
+    const b = this.voiceBox();
+    return x >= b.x && x <= b.x + b.w && y >= b.y && y <= b.y + b.h;
+  }
+
   // Drawing.
 
   font(size, weight, spacing) {
@@ -793,6 +815,7 @@ export class Dial {
     }
     if (this.kind !== 'readout') this.drawScrubLetter();
     this.drawSearch();
+    this.drawVoice();
     this.drawQuick();
     this.drawOpen();
     this.drawStatus();
@@ -835,10 +858,7 @@ export class Dial {
     const a = this.a.search;
     if (a <= .004) return;
     const g = this.g, pal = this.pal;
-    this.font(13, 400, 0);
-    const tw = g.measureText('search').width;
-    const w = 14 + 14 + 10 + tw + 18, h = 44;
-    const x = this.left ? W - 24 - w : 24, y = SEARCH_Y + (1 - a) * 8;
+    const { x, w, h } = this.searchBox(), y = SEARCH_Y + (1 - a) * 8;
     g.globalAlpha = a;
     g.fillStyle = css(pal.bg, .55);
     g.beginPath();
@@ -856,6 +876,32 @@ export class Dial {
     g.lineTo(ix + 12.74, iy + 12.74);
     g.stroke();
     this.text('search', ix + 24, y + h / 2, 13, 400, pal.fg, a, 0);
+  }
+
+  drawVoice() {
+    const a = this.a.search;
+    if (a <= .004) return;
+    const g = this.g, pal = this.pal, b = this.voiceBox(), y = b.y + (1 - a) * 8;
+    g.globalAlpha = a;
+    g.fillStyle = css(pal.bg, .55);
+    g.beginPath();
+    g.arc(b.x + 22, y + 22, 22, 0, TAU);
+    g.fill();
+    g.strokeStyle = css(pal.fg, .22);
+    g.lineWidth = 1;
+    g.stroke();
+    g.strokeStyle = css(pal.fg);
+    g.lineWidth = 1.5;
+    const ix = b.x + 15, iy = y + 15;
+    g.beginPath();
+    g.roundRect(ix + 4.5, iy + .75, 5, 8, 2.5);
+    g.stroke();
+    g.beginPath();
+    g.ellipse(ix + 7, iy + 7.5, 5, 4, 0, 0, Math.PI);
+    g.moveTo(ix + 7, iy + 11.5);
+    g.lineTo(ix + 7, iy + 13.5);
+    g.stroke();
+    g.globalAlpha = 1;
   }
 
   drawQuick() {

@@ -75,4 +75,6 @@ dependencies {
     implementation(libs.androidx.compose.ui.graphics)
     implementation(libs.androidx.compose.foundation)
     implementation(libs.androidx.compose.animation)
+
+    testImplementation(libs.junit)
 }

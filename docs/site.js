@@ -16,9 +16,21 @@ if (!(layout >= 0 && layout < LAYOUTS.length)) layout = 0;
 let left = store.get('detent.side') === 'left';
 
 const said = $('#said');
+const hint = $('.hint');
+const hintText = hint.textContent;
+let hintTimer = 0;
+function showHint(text) {
+  hint.textContent = text;
+  said.textContent = text;
+  clearTimeout(hintTimer);
+  hintTimer = setTimeout(() => { hint.textContent = hintText; }, 4000);
+}
 const demo = new Dial($('#dial'), {
   theme, layout, left,
-  onChange: e => { if (e.open) said.textContent = `${e.open} opens.`; },
+  onChange: e => {
+    if (e.open) said.textContent = `${e.open} opens.`;
+    if (e.voice) showHint('The mic button listens on your phone. The demo has no microphone.');
+  },
 });
 const previews = $$('.card canvas').map((c, i) => new Dial(c, { theme, layout: i, left, still: true }));
 const dials = [demo, ...previews];
