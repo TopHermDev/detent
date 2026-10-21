@@ -35,13 +35,13 @@ adb install detent.apk
 | Hold the dial | Letters replace the apps. Slide to a letter and release to jump to it. |
 | Hold the app in the notch | A menu shows the app shortcuts, `app info`, and `remove from dial`. |
 | Hold the clock or an empty area | The setup opens: shape, theme, apps, and feel. |
-| Drag up from the bottom of the screen | Search all your apps. The drag starts on the row of the quick button. The `search` hint marks the place. The 5 apps that you last opened from search sit at the top. Tap the cross on a recent app to remove it, or tap `clear`. Tap `+ dial` to add an app to the dial. |
-| Tap the quick button | The quick app opens. If the button has no app, pick one. |
-| Hold the quick button | Pick a different quick app. Then pick an icon to show in place of the name, or tap `name`. To empty the button, tap `clear`. |
+| Drag up from the bottom of the screen | Search all your apps. The drag starts on the row of the quick buttons. The `search` hint marks the place. The 5 apps that you last opened from search sit at the top. Tap the cross on a recent app to remove it, or tap `clear`. Tap `+ dial` to add an app to the dial. |
+| Tap a quick button | Its app opens. If the corner has no quick app yet, pick one. |
+| Hold a quick button | A menu shows the app shortcuts, `change icon`, `change app`, `add a quick app`, and `remove quick app`. |
 | Tap the mic button and say an app name | The dial swells with your voice, and your words show at the top. When the words name one app, the dial turns to it and the app opens. If not, search opens with the words. |
 | Drag down from the top of the screen | The notifications open. The drag starts above the clock. |
 
-The quick button sits in the bottom corner on the dial side. It holds one app that you need fast, such as the camera. It shows the app name or an icon that you pick. Detent marks the icon that fits the app. The mic button sits next to the quick button, at the screen edge.
+The quick buttons sit in the bottom corner on the dial side. They hold up to 3 apps that you need fast, such as the camera. Each button shows an icon that you pick, and Detent marks the icon that fits the app. With 1 quick app, the button can show the app name. With 2 or 3, a button without an icon shows the first letter of the name. The mic button sits at the screen edge, next to the first quick button.
 
 Detent suggests changes to the dial. If you open an app from search 3 times in a week, a card asks you to add it to the dial. If you do not open a dial app from the home screen for 3 weeks, a card asks you to remove it. Tap `not now` or `keep` to hide the card for that app. Detent shows 1 card a day at most. It counts the opens on the phone only.
 

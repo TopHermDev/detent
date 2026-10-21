@@ -155,11 +155,6 @@ fun SearchSheet(s: LauncherState, pal: Palette) {
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Txt(count, 11f, pal.muted, Modifier.weight(1f), spacing = .06f, maxLines = 1)
-                if (s.pick && s.quickKey != null) {
-                    Box(Modifier.height(u.dp(32f)).tap { s.clearQuick() }.padding(horizontal = u.dp(10f)), contentAlignment = Alignment.Center) {
-                        Txt("clear", 11f, pal.accent, spacing = .06f)
-                    }
-                }
             }
             LazyColumn(
                 Modifier.weight(1f).fillMaxWidth(),
@@ -216,7 +211,7 @@ private fun ResultRow(s: LauncherState, pal: Palette, app: AppEntry, highlight: 
             if (s.hasDot(app)) Box(Modifier.size(u.dp(5f)).clip(CircleShape).background(pal.accent))
         }
         if (s.pick) {
-            if (app.key == s.quickKey) Txt("quick app", 11f, pal.muted, Modifier.padding(horizontal = u.dp(16f)), spacing = .04f)
+            if (s.quick.any { it.key == app.key }) Txt("quick app", 11f, pal.muted, Modifier.padding(horizontal = u.dp(16f)), spacing = .04f)
         } else if (recent) {
             Box(Modifier.size(u.dp(44f)).tap { s.removeRecent(app) }, contentAlignment = Alignment.Center) {
                 Cross(pal.muted, u.dp(10f))
@@ -254,6 +249,7 @@ private fun Cross(color: Color, size: Dp) {
 private fun IconStep(s: LauncherState, pal: Palette, app: AppEntry) {
     val u = LocalUnits.current
     val mark = s.iconFor(app)
+    val solo = s.soloPick(app)
     Row(
         Modifier.padding(start = u.dp(28f), end = u.dp(18f)),
         verticalAlignment = Alignment.CenterVertically,
@@ -277,7 +273,7 @@ private fun IconStep(s: LauncherState, pal: Palette, app: AppEntry) {
         Modifier.padding(start = u.dp(28f), top = u.dp(16f), end = u.dp(18f), bottom = u.dp(16f)),
         spacing = .06f, maxLines = 1,
     )
-    // The name comes first. It keeps the button as it is now.
+    // The name comes first. With more than one quick app, the button shows the first letter of the name.
     val tiles = listOf<String?>(null) + QuickIcons.names
     Column(
         Modifier.fillMaxWidth().verticalScroll(rememberScrollState())
@@ -286,7 +282,9 @@ private fun IconStep(s: LauncherState, pal: Palette, app: AppEntry) {
     ) {
         tiles.chunked(6).forEach { row ->
             Row(horizontalArrangement = Arrangement.spacedBy(u.dp(10f))) {
-                row.forEach { name -> IconTile(s, pal, name, name == mark, Modifier.weight(1f)) }
+                row.forEach { name ->
+                    IconTile(s, pal, name, if (solo) "name" else app.initial, name == mark, Modifier.weight(1f))
+                }
                 repeat(6 - row.size) { Spacer(Modifier.weight(1f)) }
             }
         }
@@ -294,7 +292,7 @@ private fun IconStep(s: LauncherState, pal: Palette, app: AppEntry) {
 }
 
 @Composable
-private fun IconTile(s: LauncherState, pal: Palette, name: String?, marked: Boolean, modifier: Modifier) {
+private fun IconTile(s: LauncherState, pal: Palette, name: String?, text: String, marked: Boolean, modifier: Modifier) {
     val u = LocalUnits.current
     val shape = RoundedCornerShape(u.dp(14f))
     val color = if (marked) pal.accent else pal.fg
@@ -306,7 +304,8 @@ private fun IconTile(s: LauncherState, pal: Palette, name: String?, marked: Bool
         contentAlignment = Alignment.Center,
     ) {
         if (name == null) {
-            Txt("name", 11f, color, spacing = .02f)
+            // The name, or the first letter of it, as the button shows it.
+            if (text.length > 1) Txt(text, 11f, color, spacing = .02f) else Txt(text, 17f, color, line = 1f)
         } else {
             Canvas(Modifier.size(u.dp(22f))) {
                 drawQuickIcon(name, color, Offset.Zero, size.width, 1.5f * u.k)

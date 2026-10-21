@@ -113,6 +113,8 @@ import app.detent.launcher.LauncherState
 import app.detent.launcher.PALETTES
 import app.detent.launcher.Palette
 import app.detent.launcher.Pose
+import app.detent.launcher.QUICK_MAX
+import app.detent.launcher.QuickApp
 import app.detent.launcher.Phase
 import app.detent.launcher.Spin
 import app.detent.launcher.Step
@@ -494,8 +496,8 @@ private fun VoiceButton(s: LauncherState, pal: Palette, idle: Boolean) {
 }
 
 /**
- * The buttons in the bottom corner on the dial side: the quick button, and the voice button at the screen edge.
- * A drag up from the bottom opens search.
+ * The buttons in the bottom corner on the dial side: up to 3 quick buttons, and the voice button at the screen
+ * edge. The first quick button sits next to the voice button. A drag up from the bottom opens search.
  */
 @Composable
 private fun CornerButtons(s: LauncherState, pal: Palette) {
@@ -507,24 +509,35 @@ private fun CornerButtons(s: LauncherState, pal: Palette) {
     SideBox(!s.left, u.buttonY, 24f, Modifier.graphicsLayer { this.alpha = alpha; translationY = dy * u.k }) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(u.dp(10f))) {
             if (s.left) VoiceButton(s, pal, homeIdle)
-            QuickButton(s, pal, homeIdle)
+            val quick = s.quickApps
+            if (quick.isEmpty()) AddQuickButton(s, pal, homeIdle)
+            // With one quick app, the button can show the full name. With more, each button is a circle.
+            val solo = quick.size == 1
+            for (q in if (s.left) quick else quick.asReversed()) key(q.app.key) { QuickButton(s, pal, homeIdle, q, solo) }
             if (!s.left) VoiceButton(s, pal, homeIdle)
         }
     }
 }
 
-/** The quick button. A tap opens its app. Hold it to pick another app. */
+/** A quick button. A tap opens its app. Hold it for the shortcuts of the app and the actions of the button. */
 @Composable
-private fun QuickButton(s: LauncherState, pal: Palette, homeIdle: Boolean) {
+private fun QuickButton(s: LauncherState, pal: Palette, homeIdle: Boolean, q: QuickApp, solo: Boolean) {
     val u = LocalUnits.current
     val idle by rememberUpdatedState(homeIdle)
-    val app = s.quickApp
-    val icon = s.quickIcon
+    val slot by rememberUpdatedState(q.slot)
+    val app = q.app
+    val icon = q.icon
+    val unread = s.hasDot(app)
     // The start and the centre of the label in design units. The name lifts off from here when the app opens.
     var label by remember { mutableStateOf(Offset.Zero) }
-    if (app != null && icon != null) {
-        // The icon takes the place of the name. A new notification adds an accent dot.
-        val unread = s.hasDot(app)
+    val gestures = Modifier.pointerInput(s) {
+        detectTapGestures(
+            onTap = { if (idle) s.quickTap(slot, label.x, label.y) },
+            onLongPress = { if (idle) s.quickHold(slot, label.x, label.y) },
+        )
+    }
+    if (!solo || icon != null) {
+        // The icon, or the first letter of the name, takes the place of the name. A new notification adds an accent dot.
         Box(
             Modifier.size(u.dp(44f)).clip(CircleShape).background(pal.btnBg).border(u.dp(1f), pal.rim2, CircleShape)
                 .onGloballyPositioned {
@@ -532,17 +545,13 @@ private fun QuickButton(s: LauncherState, pal: Palette, homeIdle: Boolean) {
                     label = Offset((p.x + it.size.width / 2f) / u.k - 6f, (p.y + it.size.height / 2f) / u.k)
                 }
                 .semantics { contentDescription = app.display }
-                .pointerInput(s) {
-                    detectTapGestures(
-                        onTap = { if (idle) s.quickTap(label.x, label.y) },
-                        onLongPress = { if (idle) s.quickHold() },
-                    )
-                },
+                .then(gestures),
             contentAlignment = Alignment.Center,
         ) {
+            if (icon == null) Txt(app.initial, 17f, pal.fg, line = 1f)
             Canvas(Modifier.size(u.dp(44f))) {
                 val k = u.k
-                drawQuickIcon(icon, pal.fg, Offset(12f * k, 12f * k), 20f * k, 1.5f * k)
+                if (icon != null) drawQuickIcon(icon, pal.fg, Offset(12f * k, 12f * k), 20f * k, 1.5f * k)
                 if (unread) drawCircle(pal.accent, 3f * k, Offset(33f * k, 11f * k))
             }
         }
@@ -551,34 +560,43 @@ private fun QuickButton(s: LauncherState, pal: Palette, homeIdle: Boolean) {
     val shape = RoundedCornerShape(50)
     Row(
         Modifier.height(u.dp(44f)).clip(shape).background(pal.btnBg).border(u.dp(1f), pal.rim2, shape)
-            .pointerInput(s) {
-                detectTapGestures(
-                    onTap = { if (idle) s.quickTap(label.x, label.y) },
-                    onLongPress = { if (idle) s.quickHold() },
-                )
-            }
+            .then(gestures)
             .padding(start = u.dp(14f), end = u.dp(18f)),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(u.dp(10f)),
     ) {
-        val dot = if (app != null && s.hasDot(app)) pal.accent else pal.fg
         Canvas(Modifier.size(u.dp(14f))) {
-            val k = u.k
-            if (app == null) {
-                drawLine(pal.fg, Offset(2f * k, 7f * k), Offset(12f * k, 7f * k), strokeWidth = 1.5f * k)
-                drawLine(pal.fg, Offset(7f * k, 2f * k), Offset(7f * k, 12f * k), strokeWidth = 1.5f * k)
-            } else {
-                drawCircle(dot, 3.5f * k, Offset(7f * k, 7f * k))
-            }
+            drawCircle(if (unread) pal.accent else pal.fg, 3.5f * u.k, Offset(7f * u.k, 7f * u.k))
         }
         Txt(
-            app?.display ?: "quick app", 13f, pal.fg,
+            app.display, 13f, pal.fg,
             Modifier.onGloballyPositioned {
                 val p = it.positionInRoot()
                 label = Offset(p.x / u.k, (p.y + it.size.height / 2f) / u.k)
             },
             maxLines = 1,
         )
+    }
+}
+
+/** The empty quick button. A tap picks the first quick app. */
+@Composable
+private fun AddQuickButton(s: LauncherState, pal: Palette, homeIdle: Boolean) {
+    val u = LocalUnits.current
+    val shape = RoundedCornerShape(50)
+    Row(
+        Modifier.height(u.dp(44f)).clip(shape).background(pal.btnBg).border(u.dp(1f), pal.rim2, shape)
+            .tap(enabled = homeIdle) { s.quickAdd() }
+            .padding(start = u.dp(14f), end = u.dp(18f)),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(u.dp(10f)),
+    ) {
+        Canvas(Modifier.size(u.dp(14f))) {
+            val k = u.k
+            drawLine(pal.fg, Offset(2f * k, 7f * k), Offset(12f * k, 7f * k), strokeWidth = 1.5f * k)
+            drawLine(pal.fg, Offset(7f * k, 2f * k), Offset(7f * k, 12f * k), strokeWidth = 1.5f * k)
+        }
+        Txt("quick app", 13f, pal.fg, maxLines = 1)
     }
 }
 
@@ -727,8 +745,9 @@ private fun QuickMenuView(s: LauncherState, pal: Palette) {
     val op by animateFloatAsState(if (s.menuShown) 1f else 0f, tween(180), label = "menuAlpha")
     val t by animateFloatAsState(if (s.menuShown) 1f else 0f, tween(220, easing = Ease), label = "menuMove")
     Box(Modifier.fillMaxSize().graphicsLayer { alpha = veil }.background(pal.veil).tap { s.closeMenu() })
-    // Below the selected app. Near the bottom, the menu moves up so that it stays on the screen.
-    SideBox(s.left, min(s.anchorY + 30f, u.hd - u.bottom - 330f), 24f) {
+    // A quick button opens its menu above the button. The menu grows from the bottom.
+    val quick = m.slot != null
+    val body = @Composable {
         val shape = RoundedCornerShape(u.dp(16f))
         Column(
             Modifier.width(u.dp(220f))
@@ -736,8 +755,8 @@ private fun QuickMenuView(s: LauncherState, pal: Palette) {
                     alpha = op
                     scaleX = .95f + .05f * t
                     scaleY = .95f + .05f * t
-                    translationY = -6f * (1 - t) * u.k
-                    transformOrigin = TransformOrigin(if (s.left) .12f else .88f, 0f)
+                    translationY = (if (quick) 6f else -6f) * (1 - t) * u.k
+                    transformOrigin = TransformOrigin(if (s.left) .12f else .88f, if (quick) 1f else 0f)
                 }
                 .shadow(u.dp(16f), shape).clip(shape).background(pal.card).border(u.dp(1f), pal.rim2, shape)
                 .tap { }
@@ -749,9 +768,25 @@ private fun QuickMenuView(s: LauncherState, pal: Palette) {
                 MenuItem(label, pal.fg) { s.menuShortcut(info) }
             }
             if (m.shortcuts.isNotEmpty()) Box(Modifier.fillMaxWidth().height(u.dp(1f)).background(pal.rim))
-            MenuItem("app info", pal.muted2) { s.menuInfo() }
-            MenuItem("remove from dial", pal.muted2) { s.menuRemove() }
+            if (quick) {
+                MenuItem("change icon", pal.muted2) { s.menuQuickIcon() }
+                MenuItem("change app", pal.muted2) { s.menuQuickApp() }
+                if (s.quick.size < QUICK_MAX) MenuItem("add a quick app", pal.muted2) { s.menuQuickAdd() }
+                MenuItem("remove quick app", pal.muted2) { s.menuQuickRemove() }
+            } else {
+                MenuItem("app info", pal.muted2) { s.menuInfo() }
+                MenuItem("remove from dial", pal.muted2) { s.menuRemove() }
+            }
         }
+    }
+    if (quick) {
+        Box(
+            Modifier.fillMaxSize().padding(start = u.dp(24f), end = u.dp(24f), bottom = u.dp(u.hd - u.buttonY + 8f)),
+            contentAlignment = if (s.left) Alignment.BottomStart else Alignment.BottomEnd,
+        ) { body() }
+    } else {
+        // Below the selected app. Near the bottom, the menu moves up so that it stays on the screen.
+        SideBox(s.left, min(s.anchorY + 30f, u.hd - u.bottom - 330f), 24f) { body() }
     }
 }
 

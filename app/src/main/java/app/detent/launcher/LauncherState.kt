@@ -69,7 +69,11 @@ interface HearEvents {
 }
 
 class Press(val id: Long, val x: Float, val y: Float)
-class QuickMenu(val app: AppEntry, val shortcuts: List<ShortcutInfo>)
+/** The menu of a held app. [slot] is the quick button that holds the app, or null for the dial. [from] is that button. */
+class QuickMenu(val app: AppEntry, val shortcuts: List<ShortcutInfo>, val slot: Int? = null, val from: Pose? = null)
+
+/** An installed app on quick button [slot]. */
+class QuickApp(val slot: Int, val app: AppEntry, val icon: String?)
 class Toast(val id: Long, val text: String, val undo: (() -> Unit)?)
 
 /** A hint on the home screen: add [app] to the dial, or remove it. [count] gives the opens or the idle days. */
@@ -226,18 +230,22 @@ class LauncherState(
         private set
     var query by mutableStateOf("")
 
-    /** True while the search sheet picks the app for the quick button. */
+    /** True while the search sheet picks the app for a quick button. */
     var pick by mutableStateOf(false)
         private set
 
-    /** Key of the app on the quick button, or null when the button has no app. */
-    var quickKey by mutableStateOf(prefs.quick)
+    /** The quick apps, at most [QUICK_MAX]. The first one sits next to the mic button. */
+    var quick by mutableStateOf(prefs.quick)
         private set
-    val quickApp by derivedStateOf { quickKey?.let { k -> repo.apps.firstOrNull { it.key == k } } }
 
-    /** The icon on the quick button, or null to show the app name. */
-    var quickIcon by mutableStateOf(prefs.quickIcon)
-        private set
+    /** The installed quick apps in slot order. */
+    val quickApps by derivedStateOf {
+        val byKey = repo.apps.associateBy { it.key }
+        quick.mapIndexedNotNull { i, q -> byKey[q.key]?.let { QuickApp(i, it, q.icon) } }
+    }
+
+    /** The quick button that the search sheet picks an app for. A slot past the end adds a button. */
+    private var pickSlot = 0
 
     /** The app that the search sheet picks an icon for, or null while it lists the apps. */
     var pickFor by mutableStateOf<AppEntry?>(null)
@@ -339,6 +347,8 @@ class LauncherState(
             dialKeys = kept
             persist()
         }
+        val q = quick.filter { it.key in installed }
+        if (q.size != quick.size) saveQuick(q)
     }
 
     private fun persist() {
@@ -1252,10 +1262,14 @@ class LauncherState(
         }
     }
 
-    fun menuShortcut(info: ShortcutInfo) = afterMenu(120) { app ->
-        val label = (info.shortLabel ?: info.longLabel)?.toString()?.lowercase().orEmpty()
-        openApp(app.display, app.key, app.pkgUser, selectedPose() ?: return@afterMenu, label, true) {
-            host.launchShortcut(info, it)
+    fun menuShortcut(info: ShortcutInfo) {
+        // A shortcut of a quick app lifts off from its button.
+        val from = menu?.from
+        afterMenu(120) { app ->
+            val label = (info.shortLabel ?: info.longLabel)?.toString()?.lowercase().orEmpty()
+            openApp(app.display, app.key, app.pkgUser, from ?: selectedPose() ?: return@afterMenu, label, from == null) {
+                host.launchShortcut(info, it)
+            }
         }
     }
 
@@ -1266,6 +1280,31 @@ class LauncherState(
     }
 
     fun menuRemove() = afterMenu(160) { removeFromDial(it) }
+
+    private fun afterQuickMenu(action: (slot: Int, app: AppEntry) -> Unit) {
+        val m = menu ?: return
+        val slot = m.slot ?: return
+        afterMenu(160) { action(slot, m.app) }
+    }
+
+    /** Pick another icon for the held quick button. */
+    fun menuQuickIcon() = afterQuickMenu { slot, app ->
+        openPick(slot)
+        pickFor = app
+    }
+
+    /** Pick another app for the held quick button. */
+    fun menuQuickApp() = afterQuickMenu { slot, _ -> openPick(slot) }
+
+    fun menuQuickAdd() = afterQuickMenu { _, _ -> openPick(quick.size) }
+
+    fun menuQuickRemove() = afterQuickMenu { slot, app ->
+        val before = quick
+        fb.double()
+        fb.click(false)
+        saveQuick(quick.filterIndexed { i, _ -> i != slot })
+        showToast("removed ${app.display} from the quick apps") { saveQuick(before) }
+    }
 
     // Search.
 
@@ -1527,35 +1566,40 @@ class LauncherState(
     /** The name in the grid readout. An app that is not on the dial lifts off from here. */
     private fun readFrom() = Pose(RX, readY + 6.5f * RF, 0f, 20f / 44f, 0f)
 
-    // Quick button: one app in the bottom corner on the dial side.
+    // Quick buttons: up to 3 apps in the bottom corner on the dial side.
 
-    /** A tap on the quick button. [x] and [y] give the start and the centre of its label in design units. */
-    fun quickTap(x: Float, y: Float) {
+    /** A tap on quick button [slot]. [x] and [y] give the start and the centre of its label in design units. */
+    fun quickTap(slot: Int, x: Float, y: Float) {
         if (blocked()) return
-        val app = quickApp ?: return openPick()
+        val app = quickApps.firstOrNull { it.slot == slot }?.app ?: return quickAdd()
         openApp(app.display, app.key, app.pkgUser, Pose(x, y, 0f, 13f / 44f, 0f), "", false) {
             host.launchApp(app, it)
         }
     }
 
-    /** Hold the quick button: pick another app or clear the button. */
-    fun quickHold() {
+    /** Hold quick button [slot]: a menu with the app shortcuts and the actions of the button. */
+    fun quickHold(slot: Int, x: Float, y: Float) {
         if (blocked()) return
+        val q = quickApps.firstOrNull { it.slot == slot } ?: return quickAdd()
         fb.click(true)
         fb.heavy()
-        query = ""
-        pick = true
-        pickFor = null
-        recentKeys = prefs.recent
-        search = true
+        menu = QuickMenu(q.app, repo.shortcuts(q.app), slot, Pose(x, y, 0f, 13f / 44f, 0f))
+        menuShown = true
     }
 
-    private fun openPick() {
+    /** Pick an app for a new quick button. */
+    fun quickAdd() {
+        if (blocked()) return
+        openPick(quick.size)
+    }
+
+    private fun openPick(slot: Int) {
         openSearch()
         pick = true
+        pickSlot = slot
     }
 
-    /** A tap on an app while search picks the quick app. The sheet then shows the icons. */
+    /** A tap on an app while search picks a quick app. The sheet then shows the icons. */
     fun pickQuick(app: AppEntry) {
         fb.tick()
         fb.click(false)
@@ -1568,40 +1612,33 @@ class LauncherState(
         pickFor = null
     }
 
-    /** The icon that the picker marks for [app]: the icon on the button for the quick app, or else the icon that fits. Null marks the name. */
-    fun iconFor(app: AppEntry): String? =
-        if (app.key == quickKey) quickIcon else QuickIcons.suggest(app.label, app.component.packageName)
+    /** The icon that the picker marks for [app]: the icon of its quick button, or else the icon that fits. Null marks the name. */
+    fun iconFor(app: AppEntry): String? {
+        val q = quick.firstOrNull { it.key == app.key }
+        return if (q != null) q.icon else QuickIcons.suggest(app.label, app.component.packageName)
+    }
+
+    /** True when [app] is the only quick app after the pick. Only then does a button show the full name. */
+    fun soloPick(app: AppEntry) = quick.put(pickSlot, app.key, null).size == 1
 
     /** Puts the picked app on the quick button with [icon], or with its name when [icon] is null. */
     fun setQuick(icon: String?) {
         val app = pickFor ?: return
-        val before = quickKey
-        val beforeIcon = quickIcon
+        val before = quick
+        val next = quick.put(pickSlot, app.key, icon)
         fb.double()
         fb.click(false)
-        saveQuick(app.key, icon)
+        saveQuick(next)
         search = false
-        if (before != app.key || beforeIcon != icon) {
-            val text = if (before == app.key) "changed the quick button" else "${app.display} is on the quick button"
-            showToast(text) { saveQuick(before, beforeIcon) }
+        if (next != before) {
+            val text = if (before.any { it.key == app.key }) "changed the quick button" else "${app.display} is a quick app"
+            showToast(text) { saveQuick(before) }
         }
     }
 
-    fun clearQuick() {
-        val before = quickKey ?: return
-        val beforeIcon = quickIcon
-        fb.double()
-        fb.click(false)
-        saveQuick(null, null)
-        search = false
-        showToast("cleared the quick button") { saveQuick(before, beforeIcon) }
-    }
-
-    private fun saveQuick(key: String?, icon: String?) {
-        quickKey = key
-        prefs.quick = key
-        quickIcon = icon
-        prefs.quickIcon = icon
+    private fun saveQuick(next: List<QuickSlot>) {
+        quick = next
+        prefs.quick = next
     }
 
     // Opening apps.

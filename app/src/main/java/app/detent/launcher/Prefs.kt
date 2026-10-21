@@ -57,15 +57,24 @@ class Prefs(ctx: Context) {
         get() = sp.getString("customWall", null)?.takeIf { java.io.File(it).exists() }
         set(v) = sp.edit { putString("customWall", v) }
 
-    /** Key of the app on the quick button, or null when the button has no app. */
-    var quick: String?
-        get() = sp.getString("quick", null)
-        set(v) = sp.edit { putString("quick", v) }
-
-    /** Name of the icon on the quick button, or null to show the app name. */
-    var quickIcon: String?
-        get() = sp.getString("quickIcon", null)
-        set(v) = sp.edit { putString("quickIcon", v) }
+    /** The quick apps. Each line holds the app key, a tab, and the icon name. */
+    var quick: List<QuickSlot>
+        get() {
+            val lines = sp.getString("quicks", null)
+            if (lines != null) {
+                return lines.split('\n').filter { it.isNotEmpty() }.map {
+                    QuickSlot(it.substringBefore('\t'), it.substringAfter('\t', "").ifEmpty { null })
+                }
+            }
+            // Detent 0.10 and older keep one quick app.
+            val key = sp.getString("quick", null) ?: return emptyList()
+            return listOf(QuickSlot(key, sp.getString("quickIcon", null)))
+        }
+        set(v) = sp.edit {
+            putString("quicks", v.joinToString("\n") { it.key + "\t" + (it.icon ?: "") })
+            remove("quick")
+            remove("quickIcon")
+        }
 
     /** True when Detent hides the Android status bar and shows battery, wifi, and signal itself. */
     var ownBar: Boolean
