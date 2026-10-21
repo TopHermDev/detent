@@ -41,6 +41,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsIgnoringVisibility
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.systemGestureExclusion
@@ -210,6 +211,7 @@ private fun Home(s: LauncherState) {
         StatusStrip(s, pal, status)
         AppSheet(s, pal)
         Title(s, pal)
+        HintCard(s, pal)
         ToastView(s, pal)
     }
 }
@@ -657,6 +659,60 @@ private fun ToastView(s: LauncherState, pal: Palette) {
                 }
             }
         }
+    }
+}
+
+/** A hint to add an app that you often open from search, or to remove a dial app that you do not open. */
+@Composable
+private fun HintCard(s: LauncherState, pal: Palette) {
+    val u = LocalUnits.current
+    var last by remember { mutableStateOf(s.dialHint) }
+    s.dialHint?.let { last = it }
+    val h = last ?: return
+    val homeIdle = s.ob == null && !s.search && s.hear == null && s.open == null && s.menu == null
+    val move = (10 * u.k).toInt()
+    // The card ends above the bottom row.
+    Box(
+        Modifier.fillMaxSize().padding(start = u.dp(24f), end = u.dp(24f), bottom = u.dp(u.hd - u.buttonY + 14f)),
+        contentAlignment = Alignment.BottomCenter,
+    ) {
+        AnimatedVisibility(
+            s.dialHint != null && homeIdle,
+            enter = fadeIn(tween(250)) + slideInVertically(tween(300, easing = Ease)) { move },
+            exit = fadeOut(tween(250)) + slideOutVertically(tween(300, easing = Ease)) { move },
+        ) {
+            val shape = RoundedCornerShape(u.dp(16f))
+            val name = h.app.display
+            Column(
+                Modifier.widthIn(max = u.dp(364f)).fillMaxWidth()
+                    .shadow(u.dp(16f), shape, ambientColor = Color.Black, spotColor = Color.Black)
+                    .clip(shape).background(pal.card).border(u.dp(1f), pal.rim2, shape)
+                    .tap { }
+                    .padding(start = u.dp(18f), top = u.dp(16f), end = u.dp(4f)),
+            ) {
+                Txt(
+                    if (h.add) "add $name to the dial?" else "remove $name from the dial?", 14f, pal.fg,
+                    Modifier.padding(end = u.dp(14f)), maxLines = 2,
+                )
+                Txt(
+                    if (h.add) "you opened it from search ${h.count} times this week."
+                    else "you have not opened it from the home screen in ${h.count / 7} weeks.",
+                    12f, pal.muted2, Modifier.padding(top = u.dp(6f), end = u.dp(14f)), line = 1.45f,
+                )
+                Row(Modifier.fillMaxWidth().padding(top = u.dp(4f)), horizontalArrangement = Arrangement.End) {
+                    HintAction(if (h.add) "not now" else "keep", pal.muted2, FontWeight.Normal) { s.skipHint() }
+                    HintAction(if (h.add) "add" else "remove", pal.accent, FontWeight.Medium) { s.takeHint() }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun HintAction(label: String, color: Color, weight: FontWeight, onClick: () -> Unit) {
+    val u = LocalUnits.current
+    Box(Modifier.height(u.dp(44f)).tap(onClick = onClick).padding(horizontal = u.dp(14f)), contentAlignment = Alignment.Center) {
+        Txt(label, 12f, color, weight = weight)
     }
 }
 

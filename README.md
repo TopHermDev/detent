@@ -43,6 +43,8 @@ adb install detent.apk
 
 The quick button sits in the bottom corner on the dial side. It holds one app that you need fast, such as the camera. It shows the app name or an icon that you pick. Detent marks the icon that fits the app. The mic button sits next to the quick button, at the screen edge.
 
+Detent suggests changes to the dial. If you open an app from search 3 times in a week, a card asks you to add it to the dial. If you do not open a dial app from the home screen for 3 weeks, a card asks you to remove it. Tap `not now` or `keep` to hide the card for that app. Detent shows 1 card a day at most. It counts the opens on the phone only.
+
 With a hardware keyboard, `j` and `k` turn the dial. `l` or `Enter` opens the app. `/` opens search. `Esc` goes back.
 
 <p>

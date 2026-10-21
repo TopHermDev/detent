@@ -72,6 +72,9 @@ class Press(val id: Long, val x: Float, val y: Float)
 class QuickMenu(val app: AppEntry, val shortcuts: List<ShortcutInfo>)
 class Toast(val id: Long, val text: String, val undo: (() -> Unit)?)
 
+/** A hint on the home screen: add [app] to the dial, or remove it. [count] gives the opens or the idle days. */
+class DialHint(val app: AppEntry, val add: Boolean, val count: Int)
+
 /** The calls that need the activity. */
 interface Host {
     fun launchApp(app: AppEntry, bounds: Rect?)
@@ -193,6 +196,7 @@ class LauncherState(
     private var lpJob: Job? = null
     private var wheelJob: Job? = null
     private var toastJob: Job? = null
+    private var hintJob: Job? = null
     private var warnJob: Job? = null
     private var clockJob: Job? = null
     private var lsJob: Job? = null
@@ -341,6 +345,7 @@ class LauncherState(
         if (ob != null) return
         prefs.save(cfg, dialKeys, pos.roundToInt())
         prefs.customWall = customWall
+        prefs.syncDial(dialKeys, System.currentTimeMillis())
     }
 
     // Activity hooks.
@@ -351,6 +356,14 @@ class LauncherState(
         notifAccess = host.hasNotificationAccess()
         isHome = host.isDefaultHome()
         if (!readName) showClock()
+        hintJob?.cancel()
+        hintJob = scope.launch {
+            // The hint waits until the app name drops back into the dial.
+            delay(900)
+            if (!showHint()) return@launch
+            delay(20_000)
+            dropHint()
+        }
         val o = open ?: return
         // Back from an app: the name drops back into the dial.
         if (o.phase != Phase.Out) {
@@ -365,6 +378,8 @@ class LauncherState(
 
     fun onStop() {
         cancelPress()
+        hintJob?.cancel()
+        dropHint()
         if (drag?.scrub == true) {
             drag = null
             endScrub()
@@ -1148,6 +1163,69 @@ class LauncherState(
         showToast("removed ${app.display}") { setAppsKeep(before) }
     }
 
+    // Dial hints: add an app that you often open from search, or remove a dial app that you do not open.
+
+    /** The hint on the home screen, or null. */
+    var dialHint by mutableStateOf<DialHint?>(null)
+        private set
+
+    /** Shows a hint when one is due. Returns true when a hint shows. */
+    private fun showHint(): Boolean {
+        if (!resumed || ob != null || blocked() || dialHint != null) return false
+        val now = System.currentTimeMillis()
+        prefs.syncDial(dialKeys, now)
+        if (now - prefs.hintAt < Suggest.GAP) return false
+        val dial = dialApps
+        val byKey = repo.apps.associateBy { it.key }
+        val sg = Suggest.pick(
+            now, dial.mapTo(HashSet()) { it.key }, byKey.keys, prefs.searchOpens(),
+            dial.associate { it.key to (opened[it.pkgUser] ?: 0L) }, prefs.dialSince(), prefs.quiet(),
+        ) ?: return false
+        val app = byKey[sg.key] ?: return false
+        prefs.hintAt = now
+        dialHint = DialHint(app, sg.add, sg.count)
+        return true
+    }
+
+    /** Adds or removes the app of the hint. */
+    fun takeHint() {
+        val h = dialHint ?: return
+        hintJob?.cancel()
+        dialHint = null
+        if (h.add) addToDial(h.app) else removeIdle(h.app)
+    }
+
+    /** "not now" or "keep": the app gets no hint for a long time. */
+    fun skipHint() {
+        val h = dialHint ?: return
+        hintJob?.cancel()
+        fb.tap()
+        prefs.quiet(h.app.key, System.currentTimeMillis() + if (h.add) Suggest.NOT_NOW else Suggest.KEEP)
+        dialHint = null
+    }
+
+    /** The hint goes away with no answer. It can come back after a few days. */
+    private fun dropHint() {
+        val h = dialHint ?: return
+        prefs.quiet(h.app.key, System.currentTimeMillis() + Suggest.LATER)
+        dialHint = null
+    }
+
+    /** Removes an app that is not in the notch. The app in the notch stays there. */
+    private fun removeIdle(app: AppEntry) {
+        val before = dialKeys
+        if (dialApps.size <= Suggest.MIN_DIAL) return
+        fb.double()
+        fb.click(false)
+        setAppsKeep(before - app.key)
+        showToast("removed ${app.display}") { setAppsKeep(before) }
+    }
+
+    /** Counts an open from search or voice of an app that is not on the dial. */
+    private fun markSearched(app: AppEntry) {
+        if (app.key !in dialKeys) prefs.markSearchOpen(app.key, System.currentTimeMillis())
+    }
+
     // Quick actions: hold the selected app.
 
     private fun openMenu() {
@@ -1252,6 +1330,7 @@ class LauncherState(
     fun openFromSearch(app: AppEntry, y: Float) {
         if (open != null) return
         markRecent(app)
+        markSearched(app)
         openApp(app.display, app.key, app.pkgUser, Pose(28f, y, 0f, 16f / 44f, 0f), "", false) {
             host.launchApp(app, it)
         }
@@ -1440,6 +1519,7 @@ class LauncherState(
         if (row != null) {
             launchAt(row)
         } else {
+            markSearched(app)
             openApp(app.display, app.key, app.pkgUser, if (layout.grid) readFrom() else from, "", false) { host.launchApp(app, it) }
         }
     }

@@ -9,6 +9,10 @@ class Prefs(ctx: Context) {
     private val sp = ctx.getSharedPreferences("detent", Context.MODE_PRIVATE)
     private val openedSp = ctx.getSharedPreferences("detent.opened", Context.MODE_PRIVATE)
 
+    // The data for the dial hints: "s:" opens from search, "a:" the time an app joined the dial,
+    // "z:" the time until which an app gets no hint.
+    private val usageSp = ctx.getSharedPreferences("detent.usage", Context.MODE_PRIVATE)
+
     /** The saved setup, or null when onboarding has not finished. */
     fun load(): Saved? {
         if (!sp.getBoolean("done", false)) return null
@@ -81,4 +85,44 @@ class Prefs(ctx: Context) {
     fun opened(): Map<String, Long> = openedSp.all.mapNotNull { (k, v) -> (v as? Long)?.let { k to it } }.toMap()
 
     fun markOpened(pkgUser: String, time: Long) = openedSp.edit { putLong(pkgUser, time) }
+
+    private fun <T> usage(prefix: String, read: (Any?) -> T?): Map<String, T> =
+        usageSp.all.mapNotNull { (k, v) -> if (k.startsWith(prefix)) read(v)?.let { k.removePrefix(prefix) to it } else null }.toMap()
+
+    private fun times(v: Any?) = (v as? String)?.split(',')?.mapNotNull { it.toLongOrNull() }
+
+    /** Times of the opens from search in the last week, by app key. */
+    fun searchOpens(): Map<String, List<Long>> = usage("s:", ::times)
+
+    fun markSearchOpen(key: String, time: Long) {
+        val old = times(usageSp.getString("s:$key", null)).orEmpty()
+        val keep = (old.filter { time - it < Suggest.WEEK } + time).takeLast(8)
+        usageSp.edit { putString("s:$key", keep.joinToString(",")) }
+    }
+
+    /** The time that each dial app joined the dial, by app key. */
+    fun dialSince(): Map<String, Long> = usage("a:") { it as? Long }
+
+    /** Records the time that apps join the dial. An app that joins the dial forgets its opens from search. */
+    fun syncDial(keys: Set<String>, now: Long) {
+        val since = dialSince().keys
+        if (since == keys) return
+        usageSp.edit {
+            for (k in keys - since) {
+                putLong("a:$k", now)
+                remove("s:$k")
+            }
+            for (k in since - keys) remove("a:$k")
+        }
+    }
+
+    /** The time until which each app gets no hint, by app key. */
+    fun quiet(): Map<String, Long> = usage("z:") { it as? Long }
+
+    fun quiet(key: String, until: Long) = usageSp.edit { putLong("z:$key", until) }
+
+    /** The time of the last dial hint. */
+    var hintAt: Long
+        get() = usageSp.getLong("hintAt", 0L)
+        set(v) = usageSp.edit { putLong("hintAt", v) }
 }
