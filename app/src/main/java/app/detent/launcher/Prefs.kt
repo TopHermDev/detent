@@ -58,6 +58,16 @@ class Prefs(ctx: Context) {
         get() = sp.getString("quick", null)
         set(v) = sp.edit { putString("quick", v) }
 
+    /** Name of the icon on the quick button, or null to show the app name. */
+    var quickIcon: String?
+        get() = sp.getString("quickIcon", null)
+        set(v) = sp.edit { putString("quickIcon", v) }
+
+    /** True when Detent hides the Android status bar and shows battery, wifi, and signal itself. */
+    var ownBar: Boolean
+        get() = sp.getBoolean("ownBar", false)
+        set(v) = sp.edit { putBoolean("ownBar", v) }
+
     /** Keys of the apps last opened from search, newest first. */
     var recent: List<String>
         get() = sp.getString("recent", null)?.split('\n')?.filter { it.isNotEmpty() }.orEmpty()

@@ -71,7 +71,7 @@ class Units(val k: Float, private val density: Float, val hd: Float, val top: Fl
     val clockTop get() = max(84f, top + 44f)
     val titleY get() = max(110f, top + 70f)
     val navY get() = min(fromBottom(800f), hd - bottom - 52f)
-    val searchY get() = min(fromBottom(796f), hd - bottom - 56f)
+    val buttonY get() = min(fromBottom(796f), hd - bottom - 56f)
 }
 
 val LocalUnits = staticCompositionLocalOf { Units(1f, 1f, H0, 0f, 0f) }

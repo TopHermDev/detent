@@ -86,10 +86,11 @@
         <div><dt>hold the dial</dt><dd>Letters replace the apps. Slide to a letter and release to jump to it.</dd></div>
         <div><dt>hold the app in the notch</dt><dd>A menu shows the app shortcuts, <code>app info</code>, and <code>remove from dial</code>.</dd></div>
         <div><dt>hold the clock</dt><dd>The setup opens: shape, theme, apps, and feel.</dd></div>
-        <div><dt>tap <code>search</code></dt><dd>Search all your apps. The 5 apps that you last opened from search sit at the top. Tap the cross on a recent app to remove it, or tap <code>clear</code>. Tap <code>+ dial</code> to add an app to the dial.</dd></div>
-        <div><dt>tap the quick button</dt><dd>The quick app opens. The button sits in the bottom corner on the dial side and holds one app, such as the camera.</dd></div>
-        <div><dt>hold the quick button</dt><dd>Pick a different quick app, or tap <code>clear</code>.</dd></div>
-        <div><dt>tap the mic button</dt><dd>Say an app name. The dial swells with your voice, and your words show at the top. When the words name one app, the dial turns to it and the app opens. If not, search opens with the words.</dd></div>
+        <div><dt>drag up from the bottom</dt><dd>Start the drag at the <code>search</code> hint. Search all your apps. The 5 apps that you last opened from search sit at the top. Tap the cross on a recent app to remove it, or tap <code>clear</code>. Tap <code>+ dial</code> to add an app to the dial.</dd></div>
+        <div><dt>tap the quick button</dt><dd>The quick app opens. The button sits in the bottom corner on the dial side and holds one app, such as the camera. It shows the app name or an icon that you pick.</dd></div>
+        <div><dt>hold the quick button</dt><dd>Pick a different quick app. Then pick an icon to show in place of the name, or tap <code>name</code>. To empty the button, tap <code>clear</code>.</dd></div>
+        <div><dt>tap the mic button</dt><dd>The mic button sits next to the quick button. Say an app name. The dial swells with your voice, and your words show at the top. When the words name one app, the dial turns to it and the app opens. If not, search opens with the words.</dd></div>
+        <div><dt>drag down from the top</dt><dd>The notifications open. On the <code>feel</code> step, pick <code>detent bar</code> to hide the Android status bar. Detent then shows only wifi, signal, and battery, in the style of the layout.</dd></div>
         <div><dt><kbd>j</kbd> <kbd>k</kbd> <kbd>Enter</kbd></dt><dd>With a hardware keyboard, <kbd>j</kbd> and <kbd>k</kbd> turn the dial. <kbd>Enter</kbd> opens the app.</dd></div>
       </dl>
       <p class="note">The demo on this page does the first 4 gestures, a tap on the quick button, and the keys. Your scroll wheel also turns it.</p>
@@ -138,6 +139,8 @@
           <tr><td><code>QUERY_ALL_PACKAGES</code></td><td>To list the apps you can open and to find your default apps for the first dial.</td></tr>
           <tr><td><code>VIBRATE</code></td><td>For haptics.</td></tr>
           <tr><td><code>SET_WALLPAPER</code></td><td>For the <code>lock screen</code> switch.</td></tr>
+          <tr><td><code>EXPAND_STATUS_BAR</code></td><td>To open the notifications when you drag down from the top of the home screen.</td></tr>
+          <tr><td><code>ACCESS_NETWORK_STATE</code></td><td>For the wifi signal in the <code>detent bar</code>. Detent reads only the signal strength.</td></tr>
           <tr><td><code>RECORD_AUDIO</code></td><td>Optional. For the mic button. The microphone is on only while Detent listens. The speech service of your phone turns your voice into text.</td></tr>
           <tr><td>notification access</td><td>Optional. For unread dots. Detent reads only which apps have notifications. It does not keep the notification text.</td></tr>
         </tbody>

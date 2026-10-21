@@ -114,10 +114,19 @@ interface Host {
 
     /** Deletes saved wallpapers except [keep]. */
     fun cleanWallpapers(keep: String?)
+
+    /** Pulls down the notification shade. Returns false when the phone does not allow it. */
+    fun openNotifications(): Boolean
 }
 
-private class Drag(val x0: Float, val y0: Float, var y: Float, val t0: Long, val zone: Zone) {
+/** A drag from the top edge opens the notifications. A drag from the bottom edge opens search. */
+private enum class Edge { None, Top, Bottom }
+
+private class Drag(val x0: Float, val y0: Float, var y: Float, val t0: Long, val zone: Zone, val edge: Edge) {
     var moved = false
+
+    /** True when this edge drag opened the notifications or search. */
+    var pulled = false
     var scrub = false
 
     /** True when the touch caught a turning dial. A tap then only stops the dial. */
@@ -146,7 +155,7 @@ class LauncherState(
     var k = 1f
     var hd = H0
     var clockTop = 84f
-    var searchY = 796f
+    var buttonY = 796f
     val cy get() = layout.cy(hd)
 
     // Dial engine. The canvas reads these three every frame.
@@ -221,6 +230,14 @@ class LauncherState(
     var quickKey by mutableStateOf(prefs.quick)
         private set
     val quickApp by derivedStateOf { quickKey?.let { k -> repo.apps.firstOrNull { it.key == k } } }
+
+    /** The icon on the quick button, or null to show the app name. */
+    var quickIcon by mutableStateOf(prefs.quickIcon)
+        private set
+
+    /** The app that the search sheet picks an icon for, or null while it lists the apps. */
+    var pickFor by mutableStateOf<AppEntry?>(null)
+        private set
     var open by mutableStateOf<OpenApp?>(null)
         private set
     var menu by mutableStateOf<QuickMenu?>(null)
@@ -245,6 +262,10 @@ class LauncherState(
     var dots by mutableStateOf(prefs.dots)
         private set
     var lockWall by mutableStateOf(prefs.lockWall)
+        private set
+
+    /** True when Detent hides the Android status bar and shows battery, wifi, and signal itself. */
+    var ownBar by mutableStateOf(prefs.ownBar)
         private set
     /** Path of the user's own wallpaper, or null for the theme wallpaper. */
     var customWall by mutableStateOf(prefs.customWall)
@@ -366,6 +387,7 @@ class LauncherState(
             open != null -> close()
             hear != null -> closeVoice()
             menu != null -> closeMenu()
+            pickFor != null -> unpick()
             search -> closeSearch()
             ob in Step.SHAPE..Step.FEEL -> obBack()
         }
@@ -483,9 +505,9 @@ class LauncherState(
     /** Top row of the readout. A tall status bar moves it down by whole grid rows. */
     val readY get() = 80f + G * ceil(max(0f, clockTop - 84f) / G)
 
-    /** The lens column runs from below the date to above the search button. The lens sits at the notch. */
+    /** The lens column runs from below the date to above the bottom buttons. The lens sits at the notch. */
     val lensTop get() = readY + 112f
-    val lensBottom get() = searchY - 36f
+    val lensBottom get() = buttonY - 36f
 
     /** Rows on the dial: the themes on the theme step, the apps on all other screens. */
     private fun count() = if (ob == Step.THEME) THEMES.size else dialApps.size
@@ -594,10 +616,20 @@ class LauncherState(
 
     // Gestures. All coordinates are design units.
 
+    /** How far a drag up from the bottom has come, from 0 to 1. At 1, search opens. */
+    var lift by mutableFloatStateOf(0f)
+        private set
+
     private fun blocked() =
         open != null || search || hear != null || menu != null || ob == Step.WELCOME || ob == Step.APPS
 
     private fun mirX(x: Float) = if (left) W - x else x
+
+    /** A drag that starts above this y pulls down the notifications. The zone ends above the clock and the readout. */
+    private val pullY get() = (if (layout.grid) readY else clockTop) - 8f
+
+    /** A drag that starts below this y opens search. The zone starts below the lens column. */
+    private val pushY get() = buttonY - 24f
 
     private fun zoneAt(x: Float, y: Float): Zone {
         if (kind == Kind.Lens) {
@@ -618,19 +650,25 @@ class LauncherState(
     fun onDown(x: Float, y: Float) {
         if (blocked()) return
         val zone = if (ob == null) zoneAt(x, y) else Zone.None
+        val edge = when {
+            ob != null -> Edge.None
+            y < pullY -> Edge.Top
+            y > pushY -> Edge.Bottom
+            else -> Edge.None
+        }
         val t = SystemClock.uptimeMillis()
-        val d = Drag(x, y, y, t, zone)
+        val d = Drag(x, y, y, t, zone, edge)
         d.caught = spin == Spin.Fling || spin == Spin.Wheel || (spin == Spin.Settle && abs(target - pos) > .3f)
         d.samples.addLast(t to pos)
         drag = d
         spin = Spin.Drag
         vel = 0f
         // The lens grows under the finger.
-        if (kind == Kind.Lens) {
+        if (kind == Kind.Lens && edge == Edge.None) {
             lsJob?.cancel()
             lsT = 1f
         }
-        if (kind == Kind.Readout && ob == null && scrub == null) showName()
+        if (kind == Kind.Readout && ob == null && scrub == null && edge == Edge.None) showName()
         if (zone != Zone.None) {
             press = Press(++seq, x, y)
             lpJob?.cancel()
@@ -648,6 +686,23 @@ class LauncherState(
             d.moved = true
             cancelPress()
         }
+        // A drag down from the top opens the notifications. A drag up from the bottom opens search.
+        // These drags do not turn the dial.
+        if (d.edge != Edge.None) {
+            // The distance away from the edge.
+            val dist = if (d.edge == Edge.Top) y - d.y0 else d.y0 - y
+            if (d.edge == Edge.Bottom) lift = (dist / 24f).coerceIn(0f, 1f)
+            if (!d.pulled && dist > 24 && dist > abs(x - d.x0)) {
+                d.pulled = true
+                if (d.edge == Edge.Bottom) {
+                    openSearch()
+                } else {
+                    fb.tick()
+                    if (!host.openNotifications()) showToast("can't open the notifications")
+                }
+            }
+            return
+        }
         pos -= (y - d.y) / if (kind == Kind.Lens) LENS_GAP else GAP
         d.y = y
         val t = SystemClock.uptimeMillis()
@@ -657,6 +712,7 @@ class LauncherState(
 
     fun onUp(x: Float, y: Float) {
         cancelPress()
+        lift = 0f
         val d = drag ?: return
         drag = null
         if (kind == Kind.Lens) lsT = .5f
@@ -681,6 +737,7 @@ class LauncherState(
 
     fun onCancel() {
         cancelPress()
+        lift = 0f
         val d = drag ?: return
         drag = null
         if (kind == Kind.Lens) lsT = .5f
@@ -900,6 +957,12 @@ class LauncherState(
         lockWall = !lockWall
         prefs.lockWall = lockWall
         if (!lockWall) prefs.appliedWall = null
+    }
+
+    fun setBar(own: Boolean) {
+        tap()
+        ownBar = own
+        prefs.ownBar = own
     }
 
     fun obNext() {
@@ -1132,6 +1195,7 @@ class LauncherState(
         tap()
         query = ""
         pick = false
+        pickFor = null
         recentKeys = prefs.recent
         search = true
     }
@@ -1181,7 +1245,7 @@ class LauncherState(
 
     fun searchEnter() {
         val app = matches(query).firstOrNull() ?: return
-        if (pick) setQuick(app) else openFromSearch(app, 200f)
+        if (pick) pickQuick(app) else openFromSearch(app, 200f)
     }
 
     /** Opens a search result. [y] is the row centre in design units. */
@@ -1401,6 +1465,7 @@ class LauncherState(
         fb.heavy()
         query = ""
         pick = true
+        pickFor = null
         recentKeys = prefs.recent
         search = true
     }
@@ -1410,27 +1475,53 @@ class LauncherState(
         pick = true
     }
 
-    fun setQuick(app: AppEntry) {
+    /** A tap on an app while search picks the quick app. The sheet then shows the icons. */
+    fun pickQuick(app: AppEntry) {
+        fb.tick()
+        fb.click(false)
+        pickFor = app
+    }
+
+    /** Back from the icons to the list of apps. */
+    fun unpick() {
+        fb.tap()
+        pickFor = null
+    }
+
+    /** The icon that the picker marks for [app]: the icon on the button for the quick app, or else the icon that fits. Null marks the name. */
+    fun iconFor(app: AppEntry): String? =
+        if (app.key == quickKey) quickIcon else QuickIcons.suggest(app.label, app.component.packageName)
+
+    /** Puts the picked app on the quick button with [icon], or with its name when [icon] is null. */
+    fun setQuick(icon: String?) {
+        val app = pickFor ?: return
         val before = quickKey
+        val beforeIcon = quickIcon
         fb.double()
         fb.click(false)
-        saveQuick(app.key)
+        saveQuick(app.key, icon)
         search = false
-        if (before != app.key) showToast("${app.display} is on the quick button") { saveQuick(before) }
+        if (before != app.key || beforeIcon != icon) {
+            val text = if (before == app.key) "changed the quick button" else "${app.display} is on the quick button"
+            showToast(text) { saveQuick(before, beforeIcon) }
+        }
     }
 
     fun clearQuick() {
         val before = quickKey ?: return
+        val beforeIcon = quickIcon
         fb.double()
         fb.click(false)
-        saveQuick(null)
+        saveQuick(null, null)
         search = false
-        showToast("cleared the quick button") { saveQuick(before) }
+        showToast("cleared the quick button") { saveQuick(before, beforeIcon) }
     }
 
-    private fun saveQuick(key: String?) {
+    private fun saveQuick(key: String?, icon: String?) {
         quickKey = key
         prefs.quick = key
+        quickIcon = icon
+        prefs.quickIcon = icon
     }
 
     // Opening apps.
@@ -1554,7 +1645,9 @@ class LauncherState(
             return key == Key.Escape
         }
         if (search) {
-            if (key == Key.Escape) closeSearch()
+            if (key == Key.Escape) {
+                if (pickFor != null) unpick() else closeSearch()
+            }
             return key == Key.Escape
         }
         val o = ob

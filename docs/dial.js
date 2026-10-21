@@ -4,9 +4,9 @@
 
 const W = 412, HD = 892, AX = 226, CY0 = 470, GAP = 54;
 const G = 12, GO = 8, LX = 380, LENS_GAP = 24, RX = 20, RF = 6, RC = 62, RR = 14;
-const CLOCK_TOP = 84, SEARCH_Y = 796;
+const CLOCK_TOP = 84, BUTTON_Y = 796;
 const READ_Y = 80 + G * Math.ceil(Math.max(0, CLOCK_TOP - 84) / G);
-const LENS_TOP = READ_Y + 112, LENS_BOTTOM = SEARCH_Y - 36;
+const LENS_TOP = READ_Y + 112, LENS_BOTTOM = BUTTON_Y - 36;
 const TAU = Math.PI * 2;
 const FONT = '"JetBrains Mono", ui-monospace, monospace';
 
@@ -297,10 +297,12 @@ export class Dial {
     this.scrub = null;
     this.letter = '';
     this.drag = null;
+    // How far a drag up from the bottom has come, from 0 to 1.
+    this.lift = 0;
     this.open = null;
     this.readout = new Readout();
     this.readName = false;
-    this.a = { read: 1, labels: 1, clock: 1, search: 1, scrub: 0, wall: 1 };
+    this.a = { read: 1, labels: 1, clock: 1, row: 1, scrub: 0, wall: 1 };
     this.wall = null;
     this.prevWall = null;
     this.layoutIndex = o.layout ?? 0;
@@ -402,7 +404,7 @@ export class Dial {
       read: this.scrub && this.kind !== 'readout' ? .25 : 1,
       labels: o ? 0 : 1,
       clock: this.scrub ? .25 : 1,
-      search: this.scrub || o ? 0 : 1,
+      row: this.scrub || o ? 0 : 1,
       scrub: this.scrub ? 1 : 0,
       wall: 1,
     };
@@ -573,6 +575,12 @@ export class Dial {
       x0: x, y0: y, y, t0: t, moved: false, scrub: false, samples: [[t, this.pos]],
       caught: this.spin === 'fling' || (this.spin === 'settle' && Math.abs(this.target - this.pos) > .3),
     };
+    // A drag up from the bottom opens search on the phone. It does not turn the dial.
+    if (y > BUTTON_Y - 24) {
+      d.edge = true;
+      this.drag = d;
+      return;
+    }
     const zone = this.zoneAt(x, y);
     this.drag = d;
     this.spin = 'drag';
@@ -592,6 +600,16 @@ export class Dial {
     if (!d.moved && (Math.abs(y - d.y0) > 6 || Math.abs(x - d.x0) > 6)) {
       d.moved = true;
       clearTimeout(this.press);
+    }
+    if (d.edge) {
+      const dist = d.y0 - y;
+      this.lift = Math.max(0, Math.min(1, dist / 24));
+      if (!d.pulled && dist > 24 && dist > Math.abs(x - d.x0)) {
+        d.pulled = true;
+        this.onChange({ search: true });
+      }
+      this.run();
+      return;
     }
     this.pos -= (y - d.y) / (this.kind === 'lens' ? LENS_GAP : GAP);
     d.y = y;
@@ -613,6 +631,7 @@ export class Dial {
     const d = this.drag;
     if (!d) return;
     this.drag = null;
+    if (d.edge) { this.lift = 0; this.run(); return; }
     if (this.kind === 'lens') this.lsT = .5;
     if (d.scrub) { this.endScrub(); return; }
     const t = performance.now();
@@ -635,6 +654,7 @@ export class Dial {
     const d = this.drag;
     if (!d) return;
     this.drag = null;
+    if (d.edge) { this.lift = 0; this.run(); return; }
     if (this.kind === 'lens') this.lsT = .5;
     if (d.scrub) { this.endScrub(); return; }
     this.target = Math.round(this.pos);
@@ -734,15 +754,16 @@ export class Dial {
   }
 
   // The quick button sits in the bottom corner on the dial side. In the demo it holds the camera.
+  // The voice button sits next to it at the screen edge. The demo has no microphone.
 
   quickBox() {
     this.font(13, 400, 0);
     const w = 14 + 14 + 10 + this.g.measureText(QUICK).width + 18;
-    return { x: this.left ? 24 : W - 24 - w, y: SEARCH_Y, w, h: 44 };
+    return { x: this.left ? 24 + 44 + 10 : W - 24 - 44 - 10 - w, y: BUTTON_Y, w, h: 44 };
   }
 
   onQuick(x, y) {
-    if (this.a.search < .5) return false;
+    if (this.a.row < .5) return false;
     const b = this.quickBox();
     return x >= b.x && x <= b.x + b.w && y >= b.y && y <= b.y + b.h;
   }
@@ -755,21 +776,12 @@ export class Dial {
     this.run();
   }
 
-  // The voice button sits between search and the quick button. The demo has no microphone.
-
-  searchBox() {
-    this.font(13, 400, 0);
-    const w = 14 + 14 + 10 + this.g.measureText('search').width + 18;
-    return { x: this.left ? W - 24 - w : 24, y: SEARCH_Y, w, h: 44 };
-  }
-
   voiceBox() {
-    const s = this.searchBox();
-    return { x: this.left ? s.x - 10 - 44 : s.x + s.w + 10, y: SEARCH_Y, w: 44, h: 44 };
+    return { x: this.left ? 24 : W - 24 - 44, y: BUTTON_Y, w: 44, h: 44 };
   }
 
   onVoice(x, y) {
-    if (this.a.search < .5) return false;
+    if (this.a.row < .5) return false;
     const b = this.voiceBox();
     return x >= b.x && x <= b.x + b.w && y >= b.y && y <= b.y + b.h;
   }
@@ -814,7 +826,7 @@ export class Dial {
       this.drawNotch();
     }
     if (this.kind !== 'readout') this.drawScrubLetter();
-    this.drawSearch();
+    this.drawHint();
     this.drawVoice();
     this.drawQuick();
     this.drawOpen();
@@ -854,32 +866,32 @@ export class Dial {
     this.text(dateText(), x, CLOCK_TOP + 68 + 8, 13, 400, pal.muted2, a, .02, al, 'top');
   }
 
-  drawSearch() {
-    const a = this.a.search;
+  // The search hint sits on the free side of the bottom row. It follows a drag up from the bottom.
+  drawHint() {
+    const a = this.a.row;
     if (a <= .004) return;
-    const g = this.g, pal = this.pal;
-    const { x, w, h } = this.searchBox(), y = SEARCH_Y + (1 - a) * 8;
+    const g = this.g, pal = this.pal, lift = this.lift;
+    const color = mix(pal.accent, pal.muted2, lift);
+    const y = BUTTON_Y + 22 + (1 - a) * 8 - lift * 10;
+    this.font(13, 400, .02);
+    const tw = g.measureText('search').width;
+    // The arrow comes first on both sides. The row keeps to the clock column.
+    const x0 = this.left ? W - 28 - tw - 18 : 28;
     g.globalAlpha = a;
-    g.fillStyle = css(pal.bg, .55);
-    g.beginPath();
-    g.roundRect(x, y, w, h, h / 2);
-    g.fill();
-    g.strokeStyle = css(pal.fg, .22);
-    g.lineWidth = 1;
-    g.stroke();
-    g.strokeStyle = css(pal.fg);
+    g.strokeStyle = css(color);
     g.lineWidth = 1.5;
-    const ix = x + 14, iy = y + 15;
+    g.lineCap = 'round';
     g.beginPath();
-    g.arc(ix + 5, iy + 5, 4.25, 0, TAU);
-    g.moveTo(ix + 8.5, iy + 8.5);
-    g.lineTo(ix + 12.74, iy + 12.74);
+    g.moveTo(x0 + 1, y + 2);
+    g.lineTo(x0 + 5, y - 2);
+    g.lineTo(x0 + 9, y + 2);
     g.stroke();
-    this.text('search', ix + 24, y + h / 2, 13, 400, pal.fg, a, 0);
+    g.lineCap = 'butt';
+    this.text('search', x0 + 18, y, 13, 400, color, a, .02);
   }
 
   drawVoice() {
-    const a = this.a.search;
+    const a = this.a.row;
     if (a <= .004) return;
     const g = this.g, pal = this.pal, b = this.voiceBox(), y = b.y + (1 - a) * 8;
     g.globalAlpha = a;
@@ -905,7 +917,7 @@ export class Dial {
   }
 
   drawQuick() {
-    const a = this.a.search;
+    const a = this.a.row;
     if (a <= .004) return;
     const g = this.g, pal = this.pal, b = this.quickBox(), y = b.y + (1 - a) * 8;
     g.globalAlpha = a;

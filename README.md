@@ -35,12 +35,13 @@ adb install detent.apk
 | Hold the dial | Letters replace the apps. Slide to a letter and release to jump to it. |
 | Hold the app in the notch | A menu shows the app shortcuts, `app info`, and `remove from dial`. |
 | Hold the clock or an empty area | The setup opens: shape, theme, apps, and feel. |
-| Tap `search` | Search all your apps. The 5 apps that you last opened from search sit at the top. Tap the cross on a recent app to remove it, or tap `clear`. Tap `+ dial` to add an app to the dial. |
+| Drag up from the bottom of the screen | Search all your apps. The drag starts on the row of the quick button. The `search` hint marks the place. The 5 apps that you last opened from search sit at the top. Tap the cross on a recent app to remove it, or tap `clear`. Tap `+ dial` to add an app to the dial. |
 | Tap the quick button | The quick app opens. If the button has no app, pick one. |
-| Hold the quick button | Pick a different quick app, or tap `clear`. |
+| Hold the quick button | Pick a different quick app. Then pick an icon to show in place of the name, or tap `name`. To empty the button, tap `clear`. |
 | Tap the mic button and say an app name | The dial swells with your voice, and your words show at the top. When the words name one app, the dial turns to it and the app opens. If not, search opens with the words. |
+| Drag down from the top of the screen | The notifications open. The drag starts above the clock. |
 
-The quick button sits in the bottom corner on the dial side. It holds one app that you need fast, such as the camera. The mic button sits between `search` and the quick button.
+The quick button sits in the bottom corner on the dial side. It holds one app that you need fast, such as the camera. It shows the app name or an icon that you pick. Detent marks the icon that fits the app. The mic button sits next to the quick button, at the screen edge.
 
 With a hardware keyboard, `j` and `k` turn the dial. `l` or `Enter` opens the app. `/` opens search. `Esc` goes back.
 
@@ -94,7 +95,7 @@ Detent crops the centre of the photo to the shape of your screen and keeps a cop
 
 ## Settings
 
-The `feel` step has 4 switches:
+The `feel` step has 4 switches and a choice of status bar.
 
 | Switch | What it does |
 | --- | --- |
@@ -102,6 +103,13 @@ The `feel` step has 4 switches:
 | `haptics` | Gives a light tick for each app and a firmer tick for each letter. It follows the system touch feedback setting. |
 | `dots` | Shows an accent dot on apps with new notifications. The dot clears when you open the app. This switch needs notification access. |
 | `lock screen` | Sets the lock screen and the system wallpaper to the theme. On the grid layouts, it sets the dot grid. Android then takes the lock screen colours from it. |
+
+| Status bar | What it shows |
+| --- | --- |
+| `system bar` | The Android status bar. This is the default. |
+| `detent bar` | Only wifi, signal, and battery, in the style of the layout. The radial layouts draw them as hairlines. The grid layouts draw them as dots. Detent hides the Android status bar. |
+
+With the `detent bar`, drag down from the top of the home screen to open the notifications. A swipe from the top edge shows the Android status bar for a short time.
 
 If Android shows "Restricted setting" when you allow notification access, open the app info for Detent. Tap ⋮, then `Allow restricted settings`. Then try again.
 
@@ -116,6 +124,8 @@ The mic button uses the speech service of your phone, such as Speech Services by
 | `QUERY_ALL_PACKAGES` | To list all the apps you can open and to find your default apps for the first dial. |
 | `VIBRATE` | For haptics. |
 | `SET_WALLPAPER` | For the `lock screen` switch. |
+| `EXPAND_STATUS_BAR` | To open the notifications when you drag down from the top of the home screen. |
+| `ACCESS_NETWORK_STATE` | For the wifi signal in the `detent bar`. Detent reads only the signal strength. |
 | `RECORD_AUDIO` | Optional. For the mic button. The microphone is on only while Detent listens. If you do not allow it, the mic button opens the speech dialog of your phone. |
 | Notification access | Optional. For unread dots. Detent reads only which apps have notifications and when they arrived. It does not keep the notification text. |
 

@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -24,6 +25,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
@@ -53,6 +56,8 @@ import androidx.compose.ui.input.key.type
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
@@ -61,6 +66,7 @@ import app.detent.launcher.AppEntry
 import app.detent.launcher.Ease
 import app.detent.launcher.LauncherState
 import app.detent.launcher.Palette
+import app.detent.launcher.QuickIcons
 import kotlinx.coroutines.delay
 import kotlin.math.max
 
@@ -75,7 +81,13 @@ fun SearchSheet(s: LauncherState, pal: Palette) {
     ) {
         val focus = remember { FocusRequester() }
         val kb = LocalSoftwareKeyboardController.current
-        LaunchedEffect(Unit) {
+        val iconFor = s.pickFor
+        // The field takes the keyboard. The icons of the quick button need no keyboard.
+        LaunchedEffect(iconFor == null) {
+            if (iconFor != null) {
+                kb?.hide()
+                return@LaunchedEffect
+            }
             delay(80)
             runCatching { focus.requestFocus() }
             kb?.show()
@@ -85,6 +97,10 @@ fun SearchSheet(s: LauncherState, pal: Palette) {
         val recent = s.recentApps
         Column(Modifier.fillMaxSize().background(pal.sheet).tap { }.imePadding()) {
             Spacer(Modifier.height(u.dp(max(60f, u.top + 20f))))
+            if (iconFor != null) {
+                IconStep(s, pal, iconFor)
+                return@Column
+            }
             Row(
                 Modifier.padding(start = u.dp(28f), end = u.dp(18f)),
                 verticalAlignment = Alignment.CenterVertically,
@@ -191,7 +207,7 @@ private fun ResultRow(s: LauncherState, pal: Palette, app: AppEntry, highlight: 
     ) {
         Row(
             Modifier.weight(1f).fillMaxHeight()
-                .tap { if (s.pick) s.setQuick(app) else s.openFromSearch(app, centre / u.k) }
+                .tap { if (s.pick) s.pickQuick(app) else s.openFromSearch(app, centre / u.k) }
                 .padding(horizontal = u.dp(16f)),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(u.dp(10f)),
@@ -230,5 +246,71 @@ private fun Cross(color: Color, size: Dp) {
         val w = u.k * 1.2f
         drawLine(color, Offset(0f, 0f), Offset(this.size.width, this.size.height), strokeWidth = w, cap = StrokeCap.Round)
         drawLine(color, Offset(this.size.width, 0f), Offset(0f, this.size.height), strokeWidth = w, cap = StrokeCap.Round)
+    }
+}
+
+/** The second step of the quick app pick: an icon in place of the name, or the name. */
+@Composable
+private fun IconStep(s: LauncherState, pal: Palette, app: AppEntry) {
+    val u = LocalUnits.current
+    val mark = s.iconFor(app)
+    Row(
+        Modifier.padding(start = u.dp(28f), end = u.dp(18f)),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(u.dp(10f)),
+    ) {
+        Box(
+            Modifier.weight(1f).height(u.dp(52f)).drawBehind {
+                val y = size.height - u.k / 2
+                drawLine(pal.rim2, Offset(0f, y), Offset(size.width, y), strokeWidth = u.k)
+            },
+            contentAlignment = Alignment.CenterStart,
+        ) {
+            Txt(app.display, 26f, pal.fg, weight = FontWeight.Light, spacing = -.03f, maxLines = 1)
+        }
+        Box(Modifier.height(u.dp(44f)).tap { s.unpick() }.padding(horizontal = u.dp(10f)), contentAlignment = Alignment.Center) {
+            Txt("back", 13f, pal.muted2)
+        }
+    }
+    Txt(
+        "pick an icon for the quick button", 11f, pal.muted,
+        Modifier.padding(start = u.dp(28f), top = u.dp(16f), end = u.dp(18f), bottom = u.dp(16f)),
+        spacing = .06f, maxLines = 1,
+    )
+    // The name comes first. It keeps the button as it is now.
+    val tiles = listOf<String?>(null) + QuickIcons.names
+    Column(
+        Modifier.fillMaxWidth().verticalScroll(rememberScrollState())
+            .padding(start = u.dp(24f), end = u.dp(24f), bottom = u.dp(48f)),
+        verticalArrangement = Arrangement.spacedBy(u.dp(10f)),
+    ) {
+        tiles.chunked(6).forEach { row ->
+            Row(horizontalArrangement = Arrangement.spacedBy(u.dp(10f))) {
+                row.forEach { name -> IconTile(s, pal, name, name == mark, Modifier.weight(1f)) }
+                repeat(6 - row.size) { Spacer(Modifier.weight(1f)) }
+            }
+        }
+    }
+}
+
+@Composable
+private fun IconTile(s: LauncherState, pal: Palette, name: String?, marked: Boolean, modifier: Modifier) {
+    val u = LocalUnits.current
+    val shape = RoundedCornerShape(u.dp(14f))
+    val color = if (marked) pal.accent else pal.fg
+    Box(
+        modifier.aspectRatio(1f).clip(shape).background(if (marked) pal.hover else Color.Transparent)
+            .border(u.dp(1f), if (marked) pal.accent else pal.rim2, shape)
+            .semantics { contentDescription = name ?: "name" }
+            .tap { s.setQuick(name) },
+        contentAlignment = Alignment.Center,
+    ) {
+        if (name == null) {
+            Txt("name", 11f, color, spacing = .02f)
+        } else {
+            Canvas(Modifier.size(u.dp(22f))) {
+                drawQuickIcon(name, color, Offset.Zero, size.width, 1.5f * u.k)
+            }
+        }
     }
 }

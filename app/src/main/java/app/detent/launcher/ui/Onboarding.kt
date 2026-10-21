@@ -52,8 +52,8 @@ private fun copy(step: Int, custom: Boolean, grid: Boolean) = when (step) {
     else if (custom) Copy("2 / 4", "theme", "turn the dial to pick the colours. your wallpaper stays.")
     else Copy("2 / 4", "theme", "turn the dial to try one. each brings its own wallpaper.")
     Step.APPS -> Copy("3 / 4", "apps", "pick what goes on the dial. the rest stay one search away.")
-    Step.FEEL -> Copy("4 / 4", "feel", "a click and a tick for every detent. dots mark new notifications. the lock screen can use the theme.")
-    else -> Copy("", "ready", "hold the clock to change your setup. hold an app for shortcuts, or the dial to jump by letter.")
+    Step.FEEL -> Copy("4 / 4", "feel", "a click and a tick for every detent. dots mark new notifications. detent can draw the bar at the top.")
+    else -> Copy("", "ready", "drag up from the bottom to search. hold the clock to change your setup. hold an app for shortcuts, or the dial to jump by letter.")
 }
 
 @Composable
@@ -126,11 +126,20 @@ fun Onboarding(s: LauncherState, pal: Palette, theme: ThemeDef) {
                         Chip("your wallpaper", s.customWall != null, pal, { s.pickWallpaper() })
                     }
                 }
-                Step.FEEL -> Row(Modifier.padding(top = u.dp(42f)), horizontalArrangement = gap) {
-                    Chip("sound", s.sound, pal, { s.toggleSound() })
-                    Chip("haptics", s.haptics, pal, { s.toggleHaptics() })
-                    Chip("dots", s.dots && s.notifAccess, pal, { s.toggleDots() })
-                    Chip("lock screen", s.lockWall, pal, { s.toggleLockWall() })
+                Step.FEEL -> Column(
+                    verticalArrangement = gap,
+                    horizontalAlignment = if (s.left) Alignment.End else Alignment.Start,
+                ) {
+                    Row(horizontalArrangement = gap) {
+                        Chip("sound", s.sound, pal, { s.toggleSound() })
+                        Chip("haptics", s.haptics, pal, { s.toggleHaptics() })
+                        Chip("dots", s.dots && s.notifAccess, pal, { s.toggleDots() })
+                        Chip("lock screen", s.lockWall, pal, { s.toggleLockWall() })
+                    }
+                    Row(horizontalArrangement = gap) {
+                        Chip("system bar", !s.ownBar, pal, { s.setBar(false) })
+                        Chip("detent bar", s.ownBar, pal, { s.setBar(true) })
+                    }
                 }
                 Step.READY -> if (!s.isHome) Row(Modifier.padding(top = u.dp(42f))) {
                     Chip("set as home app", false, pal, { s.requestHome() })
@@ -143,6 +152,7 @@ fun Onboarding(s: LauncherState, pal: Palette, theme: ThemeDef) {
                     theme.group + " · " + if (theme.light) "light" else "dark"
                 Step.FEEL -> when {
                     s.dots && !s.notifAccess -> "dots need notification access"
+                    s.ownBar -> "drag down from the top for notifications"
                     s.lockWall -> "the lock screen uses the theme"
                     else -> ""
                 }

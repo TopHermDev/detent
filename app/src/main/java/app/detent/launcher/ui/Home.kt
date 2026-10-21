@@ -28,6 +28,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
@@ -38,7 +39,7 @@ import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.layout.statusBarsIgnoringVisibility
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -69,11 +70,13 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.ColorMatrix
 import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.withTransform
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onKeyEvent
@@ -91,6 +94,7 @@ import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.onClick
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.drawText
 import androidx.compose.ui.text.font.FontWeight
@@ -98,6 +102,9 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.unit.Density
 import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
+import app.detent.launcher.DeviceStatus
 import app.detent.launcher.Hear
 import app.detent.launcher.Ease
 import app.detent.launcher.Kind
@@ -124,6 +131,7 @@ import kotlin.math.min
 internal val DAYS = listOf("sun", "mon", "tue", "wed", "thu", "fri", "sat")
 internal val MONTHS = listOf("jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec")
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun DetentRoot(s: LauncherState) {
     val base = LocalDensity.current
@@ -132,7 +140,8 @@ fun DetentRoot(s: LauncherState) {
         BoxWithConstraints(Modifier.fillMaxSize()) {
             val d = LocalDensity.current
             val k = constraints.maxWidth / W
-            val top = WindowInsets.statusBars.getTop(d) / k
+            // The layout keeps the space of the status bar also when Detent hides it.
+            val top = WindowInsets.statusBarsIgnoringVisibility.getTop(d) / k
             val bottom = WindowInsets.navigationBars.getBottom(d) / k
             val u = remember(k, constraints.maxHeight, top, bottom, d.density) {
                 Units(k, d.density, constraints.maxHeight / k, top, bottom)
@@ -141,7 +150,7 @@ fun DetentRoot(s: LauncherState) {
                 s.k = u.k
                 s.hd = u.hd
                 s.clockTop = u.clockTop
-                s.searchY = u.searchY
+                s.buttonY = u.buttonY
             }
             CompositionLocalProvider(LocalUnits provides u) { Home(s) }
         }
@@ -158,7 +167,7 @@ private fun Home(s: LauncherState) {
     val idle = s.spin == Spin.Idle
     LaunchedEffect(live, idle, themeStep) { if (!themeStep || idle) wall = live }
     val bg by animateColorAsState(pal.bg, tween(400), label = "bg")
-    SystemBars(pal.light)
+    SystemBars(pal.light, s.ownBar, s.resumed)
 
     val focus = remember { FocusRequester() }
     val kb = LocalSoftwareKeyboardController.current
@@ -179,10 +188,12 @@ private fun Home(s: LauncherState) {
         // The grid layouts draw the whole screen as dots, with no wallpaper.
         val grid = s.layout.grid
         val wave = rememberVoiceWave(s)
+        val ctx = LocalContext.current
+        val status = remember { DeviceStatus(ctx.applicationContext) }
         if (!grid) Wallpaper(THEMES[wall], pal, s.left, s.customWall)
         GestureLayer(s)
         if (grid) {
-            DotGrid(s, pal, wave)
+            DotGrid(s, pal, wave, status)
         } else {
             Clock(s, pal)
             DialCanvas(s, pal, wave)
@@ -190,26 +201,30 @@ private fun Home(s: LauncherState) {
         // The readout layout shows the letter in its readout.
         if (s.kind != Kind.Readout) ScrubLetter(s, pal)
         PressRing(s, pal)
-        SearchButton(s, pal)
-        QuickButton(s, pal)
+        SearchHint(s, pal)
+        CornerButtons(s, pal)
         HearLayer(s, pal)
         if (s.ob != null) Onboarding(s, pal, THEMES[live])
         QuickMenuView(s, pal)
         SearchSheet(s, pal)
+        StatusStrip(s, pal, status)
         AppSheet(s, pal)
         Title(s, pal)
         ToastView(s, pal)
     }
 }
 
+/** Sets the icon colours of the system bars. With the Detent bar, the Android status bar hides. A swipe from the top edge still shows it. */
 @Composable
-private fun SystemBars(light: Boolean) {
+private fun SystemBars(light: Boolean, hideStatus: Boolean, resumed: Boolean) {
     val view = LocalView.current
-    LaunchedEffect(light) {
+    LaunchedEffect(light, hideStatus, resumed) {
         val window = (view.context as? Activity)?.window ?: return@LaunchedEffect
         WindowCompat.getInsetsController(window, view).apply {
             isAppearanceLightStatusBars = light
             isAppearanceLightNavigationBars = light
+            systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+            if (hideStatus) hide(WindowInsetsCompat.Type.statusBars()) else show(WindowInsetsCompat.Type.statusBars())
         }
     }
 }
@@ -407,33 +422,45 @@ private fun Heard(s: LauncherState, pal: Palette, modifier: Modifier) {
     }
 }
 
+/**
+ * The hint for search on the free side of the bottom row. A drag up from the bottom opens search.
+ * The hint follows the finger and takes the accent colour. When the home screen shows, the arrow rises once.
+ */
 @Composable
-private fun SearchButton(s: LauncherState, pal: Palette) {
+private fun SearchHint(s: LauncherState, pal: Palette) {
     val u = LocalUnits.current
-    val homeIdle = s.ob == null && !s.search && s.hear == null && s.open == null
-    val shown = homeIdle && s.scrub == null
-    val alpha by animateFloatAsState(if (shown) 1f else 0f, tween(300), label = "searchAlpha")
-    val dy by animateFloatAsState(if (shown) 0f else 8f, tween(300), label = "searchY")
-    SideBox(s.left, u.searchY, 24f, Modifier.graphicsLayer { this.alpha = alpha; translationY = dy * u.k }) {
-        // The voice button sits between search and the quick button.
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(u.dp(10f))) {
-            if (s.left) VoiceButton(s, pal, homeIdle)
-            val shape = RoundedCornerShape(50)
-            Row(
-                Modifier.height(u.dp(44f)).clip(shape).background(pal.btnBg).border(u.dp(1f), pal.rim2, shape)
-                    .tap(enabled = homeIdle) { s.openSearch() }
-                    .padding(start = u.dp(14f), end = u.dp(18f)),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(u.dp(10f)),
-            ) {
-                Canvas(Modifier.size(u.dp(14f))) {
-                    val k = u.k
-                    drawCircle(pal.fg, 4.25f * k, Offset(5f * k, 5f * k), style = Stroke(1.5f * k))
-                    drawLine(pal.fg, Offset(8.5f * k, 8.5f * k), Offset(12.74f * k, 12.74f * k), strokeWidth = 1.5f * k)
-                }
-                Txt("search", 13f, pal.fg)
+    val shown = s.ob == null && !s.search && s.hear == null && s.open == null && s.scrub == null
+    val now by rememberUpdatedState(shown)
+    val alpha by animateFloatAsState(if (shown) 1f else 0f, tween(300), label = "hintAlpha")
+    val dy by animateFloatAsState(if (shown) 0f else 8f, tween(300), label = "hintY")
+    val lift by animateFloatAsState(s.lift, tween(80), label = "hintLift")
+    val nudge = remember { Animatable(0f) }
+    LaunchedEffect(s.resumed) {
+        if (!s.resumed) return@LaunchedEffect
+        delay(700)
+        if (!now) return@LaunchedEffect
+        nudge.animateTo(1f, tween(280, easing = Ease))
+        nudge.animateTo(0f, tween(460, easing = Ease))
+    }
+    if (alpha < .004f) return
+    val color = lerp(pal.muted2, pal.accent, lift)
+    SideBox(s.left, u.buttonY, 28f, Modifier.graphicsLayer { this.alpha = alpha; translationY = (dy - lift * 10f) * u.k }) {
+        // No pointer input here. The drag goes to the gesture layer below.
+        Row(
+            Modifier.height(u.dp(44f)).semantics {
+                contentDescription = "search"
+                onClick { s.openSearch(); true }
+            },
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(u.dp(8f)),
+        ) {
+            Canvas(Modifier.size(u.dp(10f)).graphicsLayer { translationY = -nudge.value * 4f * u.k }) {
+                val k = u.k
+                val w = 1.5f * k
+                drawLine(color, Offset(1f * k, 7f * k), Offset(5f * k, 3f * k), strokeWidth = w, cap = StrokeCap.Round)
+                drawLine(color, Offset(5f * k, 3f * k), Offset(9f * k, 7f * k), strokeWidth = w, cap = StrokeCap.Round)
             }
-            if (!s.left) VoiceButton(s, pal, homeIdle)
+            Txt("search", 13f, color, spacing = .02f)
         }
     }
 }
@@ -464,51 +491,92 @@ private fun VoiceButton(s: LauncherState, pal: Palette, idle: Boolean) {
     }
 }
 
-/** The quick button sits in the bottom corner on the dial side. A tap opens its app. Hold it to pick another app. */
+/**
+ * The buttons in the bottom corner on the dial side: the quick button, and the voice button at the screen edge.
+ * A drag up from the bottom opens search.
+ */
 @Composable
-private fun QuickButton(s: LauncherState, pal: Palette) {
+private fun CornerButtons(s: LauncherState, pal: Palette) {
     val u = LocalUnits.current
     val homeIdle = s.ob == null && !s.search && s.hear == null && s.open == null
-    val idle by rememberUpdatedState(homeIdle)
     val shown = homeIdle && s.scrub == null
-    val alpha by animateFloatAsState(if (shown) 1f else 0f, tween(300), label = "quickAlpha")
-    val dy by animateFloatAsState(if (shown) 0f else 8f, tween(300), label = "quickY")
+    val alpha by animateFloatAsState(if (shown) 1f else 0f, tween(300), label = "cornerAlpha")
+    val dy by animateFloatAsState(if (shown) 0f else 8f, tween(300), label = "cornerY")
+    SideBox(!s.left, u.buttonY, 24f, Modifier.graphicsLayer { this.alpha = alpha; translationY = dy * u.k }) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(u.dp(10f))) {
+            if (s.left) VoiceButton(s, pal, homeIdle)
+            QuickButton(s, pal, homeIdle)
+            if (!s.left) VoiceButton(s, pal, homeIdle)
+        }
+    }
+}
+
+/** The quick button. A tap opens its app. Hold it to pick another app. */
+@Composable
+private fun QuickButton(s: LauncherState, pal: Palette, homeIdle: Boolean) {
+    val u = LocalUnits.current
+    val idle by rememberUpdatedState(homeIdle)
     val app = s.quickApp
+    val icon = s.quickIcon
     // The start and the centre of the label in design units. The name lifts off from here when the app opens.
     var label by remember { mutableStateOf(Offset.Zero) }
-    SideBox(!s.left, u.searchY, 24f, Modifier.graphicsLayer { this.alpha = alpha; translationY = dy * u.k }) {
-        val shape = RoundedCornerShape(50)
-        Row(
-            Modifier.height(u.dp(44f)).clip(shape).background(pal.btnBg).border(u.dp(1f), pal.rim2, shape)
+    if (app != null && icon != null) {
+        // The icon takes the place of the name. A new notification adds an accent dot.
+        val unread = s.hasDot(app)
+        Box(
+            Modifier.size(u.dp(44f)).clip(CircleShape).background(pal.btnBg).border(u.dp(1f), pal.rim2, CircleShape)
+                .onGloballyPositioned {
+                    val p = it.positionInRoot()
+                    label = Offset((p.x + it.size.width / 2f) / u.k - 6f, (p.y + it.size.height / 2f) / u.k)
+                }
+                .semantics { contentDescription = app.display }
                 .pointerInput(s) {
                     detectTapGestures(
                         onTap = { if (idle) s.quickTap(label.x, label.y) },
                         onLongPress = { if (idle) s.quickHold() },
                     )
-                }
-                .padding(start = u.dp(14f), end = u.dp(18f)),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(u.dp(10f)),
-        ) {
-            val dot = if (app != null && s.hasDot(app)) pal.accent else pal.fg
-            Canvas(Modifier.size(u.dp(14f))) {
-                val k = u.k
-                if (app == null) {
-                    drawLine(pal.fg, Offset(2f * k, 7f * k), Offset(12f * k, 7f * k), strokeWidth = 1.5f * k)
-                    drawLine(pal.fg, Offset(7f * k, 2f * k), Offset(7f * k, 12f * k), strokeWidth = 1.5f * k)
-                } else {
-                    drawCircle(dot, 3.5f * k, Offset(7f * k, 7f * k))
-                }
-            }
-            Txt(
-                app?.display ?: "quick app", 13f, pal.fg,
-                Modifier.onGloballyPositioned {
-                    val p = it.positionInRoot()
-                    label = Offset(p.x / u.k, (p.y + it.size.height / 2f) / u.k)
                 },
-                maxLines = 1,
-            )
+            contentAlignment = Alignment.Center,
+        ) {
+            Canvas(Modifier.size(u.dp(44f))) {
+                val k = u.k
+                drawQuickIcon(icon, pal.fg, Offset(12f * k, 12f * k), 20f * k, 1.5f * k)
+                if (unread) drawCircle(pal.accent, 3f * k, Offset(33f * k, 11f * k))
+            }
         }
+        return
+    }
+    val shape = RoundedCornerShape(50)
+    Row(
+        Modifier.height(u.dp(44f)).clip(shape).background(pal.btnBg).border(u.dp(1f), pal.rim2, shape)
+            .pointerInput(s) {
+                detectTapGestures(
+                    onTap = { if (idle) s.quickTap(label.x, label.y) },
+                    onLongPress = { if (idle) s.quickHold() },
+                )
+            }
+            .padding(start = u.dp(14f), end = u.dp(18f)),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(u.dp(10f)),
+    ) {
+        val dot = if (app != null && s.hasDot(app)) pal.accent else pal.fg
+        Canvas(Modifier.size(u.dp(14f))) {
+            val k = u.k
+            if (app == null) {
+                drawLine(pal.fg, Offset(2f * k, 7f * k), Offset(12f * k, 7f * k), strokeWidth = 1.5f * k)
+                drawLine(pal.fg, Offset(7f * k, 2f * k), Offset(7f * k, 12f * k), strokeWidth = 1.5f * k)
+            } else {
+                drawCircle(dot, 3.5f * k, Offset(7f * k, 7f * k))
+            }
+        }
+        Txt(
+            app?.display ?: "quick app", 13f, pal.fg,
+            Modifier.onGloballyPositioned {
+                val p = it.positionInRoot()
+                label = Offset(p.x / u.k, (p.y + it.size.height / 2f) / u.k)
+            },
+            maxLines = 1,
+        )
     }
 }
 
@@ -560,7 +628,7 @@ private fun ToastView(s: LauncherState, pal: Palette) {
     val u = LocalUnits.current
     val d = LocalDensity.current
     val ime = WindowInsets.ime.getBottom(d) / u.k
-    val y = min(u.searchY - 56f, u.hd - ime - 60f)
+    val y = min(u.buttonY - 56f, u.hd - ime - 60f)
     var last by remember { mutableStateOf(s.toast) }
     s.toast?.let { last = it }
     val t = last ?: return

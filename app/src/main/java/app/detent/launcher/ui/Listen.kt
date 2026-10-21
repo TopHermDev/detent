@@ -109,7 +109,7 @@ fun hearStatus(s: LauncherState): String = when (s.hear) {
 
 /**
  * While Detent listens, a tap anywhere on the screen stops the voice, or listens again after a miss.
- * The cancel button sits where search sits.
+ * The cancel button takes the place of the quick button and the voice button.
  */
 @Composable
 fun HearLayer(s: LauncherState, pal: Palette) {
@@ -119,7 +119,7 @@ fun HearLayer(s: LauncherState, pal: Palette) {
     val alpha by animateFloatAsState(if (on) 1f else 0f, tween(300), label = "hearAlpha")
     val dy by animateFloatAsState(if (on) 0f else 8f, tween(300), label = "hearY")
     if (alpha < .004f) return
-    SideBox(s.left, u.searchY, 24f, Modifier.graphicsLayer { this.alpha = alpha; translationY = dy * u.k }) {
+    SideBox(!s.left, u.buttonY, 24f, Modifier.graphicsLayer { this.alpha = alpha; translationY = dy * u.k }) {
         val shape = RoundedCornerShape(50)
         Row(
             Modifier.height(u.dp(44f)).clip(shape).background(pal.btnBg).border(u.dp(1f), pal.rim2, shape)

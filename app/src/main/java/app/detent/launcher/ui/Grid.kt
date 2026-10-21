@@ -27,6 +27,7 @@ import androidx.compose.ui.text.drawText
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.rememberTextMeasurer
 import app.detent.launcher.CH
+import app.detent.launcher.DeviceStatus
 import app.detent.launcher.G
 import app.detent.launcher.GAP
 import app.detent.launcher.GO
@@ -84,7 +85,7 @@ private class Dots {
 
 /** The grid layouts: field, lens and readout. The whole screen is one grid of dots. */
 @Composable
-fun DotGrid(s: LauncherState, pal: Palette, wave: VoiceWave) {
+fun DotGrid(s: LauncherState, pal: Palette, wave: VoiceWave, status: DeviceStatus) {
     val u = LocalUnits.current
     val measurer = rememberTextMeasurer(cacheSize = 160)
     val regular = remember(u) { textStyle(u, 15f, pal.fg, FontWeight.Normal, spacing = .01f) }
@@ -177,6 +178,10 @@ fun DotGrid(s: LauncherState, pal: Palette, wave: VoiceWave) {
         }
 
         val readY = s.readY
+        // The status dots replace the grid dots on their row.
+        val bar = s.ownBar
+        val barY = gridBarY(u.top)
+        val barX0 = BAR_X1 - (barCols(status) - 1) * BP
         val n = names.size
         val cur = pos.roundToInt()
 
@@ -205,6 +210,7 @@ fun DotGrid(s: LauncherState, pal: Palette, wave: VoiceWave) {
                 val x0 = GO + i * G
                 val sx = mir(x0)
                 if (y0 > readY - 4 && y0 < readY + 80 && sx > 16 && sx < 390) continue
+                if (bar && y0 == barY && x0 > barX0 - 4 && x0 < BAR_X1 + 4) continue
                 var x = x0
                 var y = y0
                 var r = 1.2f

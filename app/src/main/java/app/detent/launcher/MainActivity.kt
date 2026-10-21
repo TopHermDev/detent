@@ -1,6 +1,7 @@
 package app.detent.launcher
 
 import android.Manifest
+import android.annotation.SuppressLint
 import android.app.ActivityOptions
 import android.app.role.RoleManager
 import android.content.ActivityNotFoundException
@@ -266,6 +267,13 @@ class MainActivity : ComponentActivity(), Host {
         val app = applicationContext
         thread(name = "detent-clean") { CustomWallpaper.clean(app, keep) }
     }
+
+    // Android has no public call that opens the notification shade. Launchers use this hidden call. It needs EXPAND_STATUS_BAR.
+    @SuppressLint("WrongConstant", "DiscouragedPrivateApi")
+    override fun openNotifications(): Boolean = runCatching {
+        val bar = getSystemService("statusbar") ?: return false
+        bar.javaClass.getMethod("expandNotificationsPanel").invoke(bar)
+    }.isSuccess
 
     private fun open(intent: Intent): Boolean = try {
         startActivity(intent)
