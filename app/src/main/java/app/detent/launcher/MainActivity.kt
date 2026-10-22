@@ -3,6 +3,7 @@ package app.detent.launcher
 import android.Manifest
 import android.annotation.SuppressLint
 import android.app.ActivityOptions
+import android.app.SearchManager
 import android.app.role.RoleManager
 import android.content.ActivityNotFoundException
 import android.content.ComponentName
@@ -12,6 +13,7 @@ import android.content.pm.PackageManager
 import android.content.pm.ShortcutInfo
 import android.graphics.Color
 import android.graphics.Rect
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
@@ -125,6 +127,23 @@ class MainActivity : ComponentActivity(), Host {
 
     override fun launchApp(app: AppEntry, bounds: Rect?) =
         launcherApps.startMainActivity(app.component, app.user, bounds, reveal(bounds))
+
+    private fun webIntent(query: String) = Intent(Intent.ACTION_WEB_SEARCH).putExtra(SearchManager.QUERY, query)
+
+    /** The screens that take a web search from Detent. Chrome lists a web search screen that other apps cannot start. */
+    private fun webScreens() = packageManager.queryIntentActivities(webIntent(""), PackageManager.MATCH_DEFAULT_ONLY)
+        .map { it.activityInfo }.filter { it.exported }
+
+    override fun canSearchWeb() = webScreens().isNotEmpty()
+
+    override fun searchWeb(query: String, bounds: Rect?) {
+        val web = webIntent(query)
+        // The default browser searches with its own search engine. When it takes no web search, Android picks the app or asks.
+        val browser = packageManager.resolveActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://")), PackageManager.MATCH_DEFAULT_ONLY)
+            ?.activityInfo?.packageName
+        webScreens().firstOrNull { it.packageName == browser }?.let { web.setClassName(it.packageName, it.name) }
+        startActivity(web, reveal(bounds))
+    }
 
     override fun launchShortcut(info: ShortcutInfo, bounds: Rect?) =
         launcherApps.startShortcut(info, bounds, reveal(bounds))

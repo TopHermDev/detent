@@ -204,7 +204,7 @@ private fun Home(s: LauncherState) {
         // The readout layout shows the letter in its readout.
         if (s.kind != Kind.Readout) ScrubLetter(s, pal)
         PressRing(s, pal)
-        SearchHint(s, pal)
+        AppsHint(s, pal)
         CornerButtons(s, pal)
         HearLayer(s, pal)
         if (s.ob != null) Onboarding(s, pal, THEMES[live])
@@ -427,11 +427,11 @@ private fun Heard(s: LauncherState, pal: Palette, modifier: Modifier) {
 }
 
 /**
- * The hint for search on the free side of the bottom row. A drag up from the bottom opens search.
+ * The hint for the app search on the free side of the bottom row. A drag up from the bottom opens the search.
  * The hint follows the finger and takes the accent colour. When the home screen shows, the arrow rises once.
  */
 @Composable
-private fun SearchHint(s: LauncherState, pal: Palette) {
+private fun AppsHint(s: LauncherState, pal: Palette) {
     val u = LocalUnits.current
     val shown = s.ob == null && !s.search && s.hear == null && s.open == null && s.scrub == null
     val now by rememberUpdatedState(shown)
@@ -452,7 +452,7 @@ private fun SearchHint(s: LauncherState, pal: Palette) {
         // No pointer input here. The drag goes to the gesture layer below.
         Row(
             Modifier.height(u.dp(44f)).semantics {
-                contentDescription = "search"
+                contentDescription = "apps"
                 onClick { s.openSearch(); true }
             },
             verticalAlignment = Alignment.CenterVertically,
@@ -464,8 +464,22 @@ private fun SearchHint(s: LauncherState, pal: Palette) {
                 drawLine(color, Offset(1f * k, 7f * k), Offset(5f * k, 3f * k), strokeWidth = w, cap = StrokeCap.Round)
                 drawLine(color, Offset(5f * k, 3f * k), Offset(9f * k, 7f * k), strokeWidth = w, cap = StrokeCap.Round)
             }
-            Txt("search", 13f, color, spacing = .02f)
+            Txt("apps", 13f, color, spacing = .02f)
         }
+    }
+}
+
+/** The web button. Type words, and the browser or the search app searches the web for them. */
+@Composable
+private fun WebButton(s: LauncherState, pal: Palette, idle: Boolean) {
+    val u = LocalUnits.current
+    Box(
+        Modifier.size(u.dp(44f)).clip(CircleShape).background(pal.btnBg).border(u.dp(1f), pal.rim2, CircleShape)
+            .semantics { contentDescription = "web search" }
+            .tap(enabled = idle) { s.openWeb() },
+        contentAlignment = Alignment.Center,
+    ) {
+        Canvas(Modifier.size(u.dp(16f))) { drawQuickIcon("globe", pal.fg, Offset.Zero, size.width, 1.5f * u.k) }
     }
 }
 
@@ -496,8 +510,8 @@ private fun VoiceButton(s: LauncherState, pal: Palette, idle: Boolean) {
 }
 
 /**
- * The buttons in the bottom corner on the dial side: up to 3 quick buttons, and the voice button at the screen
- * edge. The first quick button sits next to the voice button. A drag up from the bottom opens search.
+ * The buttons in the bottom corner on the dial side: up to 3 quick buttons, the web button, and the voice button
+ * at the screen edge. The first quick button sits next to the web button. A drag up from the bottom opens search.
  */
 @Composable
 private fun CornerButtons(s: LauncherState, pal: Palette) {
@@ -508,13 +522,19 @@ private fun CornerButtons(s: LauncherState, pal: Palette) {
     val dy by animateFloatAsState(if (shown) 0f else 8f, tween(300), label = "cornerY")
     SideBox(!s.left, u.buttonY, 24f, Modifier.graphicsLayer { this.alpha = alpha; translationY = dy * u.k }) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(u.dp(10f))) {
-            if (s.left) VoiceButton(s, pal, homeIdle)
+            if (s.left) {
+                VoiceButton(s, pal, homeIdle)
+                WebButton(s, pal, homeIdle)
+            }
             val quick = s.quickApps
             if (quick.isEmpty()) AddQuickButton(s, pal, homeIdle)
             // With one quick app, the button can show the full name. With more, each button is a circle.
             val solo = quick.size == 1
             for (q in if (s.left) quick else quick.asReversed()) key(q.app.key) { QuickButton(s, pal, homeIdle, q, solo) }
-            if (!s.left) VoiceButton(s, pal, homeIdle)
+            if (!s.left) {
+                WebButton(s, pal, homeIdle)
+                VoiceButton(s, pal, homeIdle)
+            }
         }
     }
 }

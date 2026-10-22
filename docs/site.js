@@ -30,7 +30,8 @@ const demo = new Dial($('#dial'), {
   onChange: e => {
     if (e.open) said.textContent = `${e.open} opens.`;
     if (e.voice) showHint('The mic button listens on your phone. The demo has no microphone.');
-    if (e.search) showHint('On your phone, search opens with the keyboard. The demo has no search.');
+    if (e.search) showHint('On your phone, the app search opens with the keyboard. The demo has no search.');
+    if (e.web) showHint('On your phone, the web button hands your words to your browser or search app. The demo has no web search.');
   },
 });
 const previews = $$('.card canvas').map((c, i) => new Dial(c, { theme, layout: i, left, still: true }));

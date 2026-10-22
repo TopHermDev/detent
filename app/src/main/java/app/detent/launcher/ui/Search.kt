@@ -135,7 +135,12 @@ fun SearchSheet(s: LauncherState, pal: Palette) {
                             },
                             contentAlignment = Alignment.CenterStart,
                         ) {
-                            if (q.isEmpty()) Txt(if (s.pick) "pick a quick app" else "search apps", 26f, pal.muted, weight = FontWeight.Light, spacing = -.03f, maxLines = 1)
+                            val empty = when {
+                                s.pick -> "pick a quick app"
+                                s.web -> "search the web"
+                                else -> "search apps"
+                            }
+                            if (q.isEmpty()) Txt(empty, 26f, pal.muted, weight = FontWeight.Light, spacing = -.03f, maxLines = 1)
                             inner()
                         }
                     },
@@ -146,6 +151,7 @@ fun SearchSheet(s: LauncherState, pal: Palette) {
             }
             val n = s.dialApps.size
             val count = when {
+                s.web -> "your browser or search app shows the results"
                 q.isNotBlank() -> "${results.size} " + if (results.size == 1) "match" else "matches"
                 s.pick -> "tap an app for the quick button"
                 else -> "${results.size} apps · $n on dial"
@@ -155,6 +161,10 @@ fun SearchSheet(s: LauncherState, pal: Palette) {
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Txt(count, 11f, pal.muted, Modifier.weight(1f), spacing = .06f, maxLines = 1)
+            }
+            if (s.web) {
+                if (q.isNotBlank()) WebRow(s, pal, q.trim())
+                return@Column
             }
             LazyColumn(
                 Modifier.weight(1f).fillMaxWidth(),
@@ -172,6 +182,22 @@ fun SearchSheet(s: LauncherState, pal: Palette) {
                 }
             }
         }
+    }
+}
+
+/** The one row of the web search: the words, and a tap that hands them to the browser. */
+@Composable
+private fun WebRow(s: LauncherState, pal: Palette, words: String) {
+    val u = LocalUnits.current
+    Row(
+        Modifier.padding(horizontal = u.dp(12f)).fillMaxWidth().height(u.dp(48f)).clip(RoundedCornerShape(u.dp(10f)))
+            .background(pal.hover).tap { s.searchWeb() }.padding(horizontal = u.dp(16f)),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(u.dp(12f)),
+    ) {
+        Canvas(Modifier.size(u.dp(16f))) { drawQuickIcon("globe", pal.muted2, Offset.Zero, size.width, 1.5f * u.k) }
+        Txt(words, 16f, pal.fg, Modifier.weight(1f), maxLines = 1)
+        Txt("search", 11f, pal.accent, spacing = .04f)
     }
 }
 

@@ -82,6 +82,12 @@ class DialHint(val app: AppEntry, val add: Boolean, val count: Int)
 /** The calls that need the activity. */
 interface Host {
     fun launchApp(app: AppEntry, bounds: Rect?)
+
+    /** True when an app on the phone can search the web. */
+    fun canSearchWeb(): Boolean
+
+    /** Hands [query] to the default browser, or else to the web search app that Android picks. Detent has no internet permission. */
+    fun searchWeb(query: String, bounds: Rect?)
     fun launchShortcut(info: ShortcutInfo, bounds: Rect?)
     fun showAppInfo(app: AppEntry, bounds: Rect?)
     fun isDefaultHome(): Boolean
@@ -229,6 +235,10 @@ class LauncherState(
     var search by mutableStateOf(false)
         private set
     var query by mutableStateOf("")
+
+    /** True while the search sheet takes words for a web search. */
+    var web by mutableStateOf(false)
+        private set
 
     /** True while the search sheet picks the app for a quick button. */
     var pick by mutableStateOf(false)
@@ -1313,8 +1323,28 @@ class LauncherState(
         query = ""
         pick = false
         pickFor = null
+        web = false
         recentKeys = prefs.recent
         search = true
+    }
+
+    /** The web button: the search sheet takes words for the browser or the search app. */
+    fun openWeb() {
+        if (blocked()) return
+        openSearch()
+        web = true
+    }
+
+    /** Hands the words in the field to the browser or the search app. The words lift off from the field. */
+    fun searchWeb() {
+        val q = query.trim()
+        if (q.isEmpty() || open != null) return
+        if (!host.canSearchWeb()) {
+            showToast("no app can search the web")
+            return
+        }
+        val label = if (q.length > 24) q.take(23).trimEnd() + "…" else q
+        openApp(label, null, null, Pose(28f, clockTop + 2f, 0f, 26f / 44f, 0f), "web", false) { host.searchWeb(q, it) }
     }
 
     fun closeSearch() {
@@ -1361,6 +1391,7 @@ class LauncherState(
     }
 
     fun searchEnter() {
+        if (web) return searchWeb()
         val app = matches(query).firstOrNull() ?: return
         if (pick) pickQuick(app) else openFromSearch(app, 200f)
     }

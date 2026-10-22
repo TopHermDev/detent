@@ -570,6 +570,7 @@ export class Dial {
     // The quick button and the voice button take their own taps.
     if (this.onQuick(x, y)) { this.btnDown = 'quick'; return; }
     if (this.onVoice(x, y)) { this.btnDown = 'voice'; return; }
+    if (this.onWeb(x, y)) { this.btnDown = 'web'; return; }
     const t = performance.now();
     const d = {
       x0: x, y0: y, y, t0: t, moved: false, scrub: false, samples: [[t, this.pos]],
@@ -626,6 +627,7 @@ export class Dial {
       this.btnDown = null;
       if (b === 'quick' && this.onQuick(x, y)) this.openQuick();
       if (b === 'voice' && this.onVoice(x, y)) this.onChange({ voice: true });
+      if (b === 'web' && this.onWeb(x, y)) this.onChange({ web: true });
       return;
     }
     const d = this.drag;
@@ -754,12 +756,13 @@ export class Dial {
   }
 
   // The quick button sits in the bottom corner on the dial side. In the demo it holds the camera.
-  // The voice button sits next to it at the screen edge. The demo has no microphone.
+  // The web button and the voice button sit next to it. The voice button is at the screen edge.
+  // The demo has no browser search and no microphone.
 
   quickBox() {
     this.font(13, 400, 0);
     const w = 14 + 14 + 10 + this.g.measureText(QUICK).width + 18;
-    return { x: this.left ? 24 + 44 + 10 : W - 24 - 44 - 10 - w, y: BUTTON_Y, w, h: 44 };
+    return { x: this.left ? 24 + 2 * (44 + 10) : W - 24 - 2 * (44 + 10) - w, y: BUTTON_Y, w, h: 44 };
   }
 
   onQuick(x, y) {
@@ -783,6 +786,16 @@ export class Dial {
   onVoice(x, y) {
     if (this.a.row < .5) return false;
     const b = this.voiceBox();
+    return x >= b.x && x <= b.x + b.w && y >= b.y && y <= b.y + b.h;
+  }
+
+  webBox() {
+    return { x: this.left ? 24 + 44 + 10 : W - 24 - 44 - 10 - 44, y: BUTTON_Y, w: 44, h: 44 };
+  }
+
+  onWeb(x, y) {
+    if (this.a.row < .5) return false;
+    const b = this.webBox();
     return x >= b.x && x <= b.x + b.w && y >= b.y && y <= b.y + b.h;
   }
 
@@ -828,6 +841,7 @@ export class Dial {
     if (this.kind !== 'readout') this.drawScrubLetter();
     this.drawHint();
     this.drawVoice();
+    this.drawWeb();
     this.drawQuick();
     this.drawOpen();
     this.drawStatus();
@@ -874,7 +888,7 @@ export class Dial {
     const color = mix(pal.accent, pal.muted2, lift);
     const y = BUTTON_Y + 22 + (1 - a) * 8 - lift * 10;
     this.font(13, 400, .02);
-    const tw = g.measureText('search').width;
+    const tw = g.measureText('apps').width;
     // The arrow comes first on both sides. The row keeps to the clock column.
     const x0 = this.left ? W - 28 - tw - 18 : 28;
     g.globalAlpha = a;
@@ -887,7 +901,35 @@ export class Dial {
     g.lineTo(x0 + 9, y + 2);
     g.stroke();
     g.lineCap = 'butt';
-    this.text('search', x0 + 18, y, 13, 400, color, a, .02);
+    this.text('apps', x0 + 18, y, 13, 400, color, a, .02);
+  }
+
+  // A globe on the 24 unit grid of the app icons, drawn 16 units wide.
+  drawWeb() {
+    const a = this.a.row;
+    if (a <= .004) return;
+    const g = this.g, pal = this.pal, b = this.webBox(), y = b.y + (1 - a) * 8;
+    g.globalAlpha = a;
+    g.fillStyle = css(pal.bg, .55);
+    g.beginPath();
+    g.arc(b.x + 22, y + 22, 22, 0, TAU);
+    g.fill();
+    g.strokeStyle = css(pal.fg, .22);
+    g.lineWidth = 1;
+    g.stroke();
+    const s = 16 / 24, cx = b.x + 22, cy = y + 22;
+    g.strokeStyle = css(pal.fg);
+    g.lineWidth = 1.5;
+    g.lineCap = 'round';
+    g.beginPath();
+    g.arc(cx, cy, 9 * s, 0, TAU);
+    g.moveTo(cx + 4 * s, cy);
+    g.ellipse(cx, cy, 4 * s, 9 * s, 0, 0, TAU);
+    g.moveTo(cx - 9 * s, cy);
+    g.lineTo(cx + 9 * s, cy);
+    g.stroke();
+    g.lineCap = 'butt';
+    g.globalAlpha = 1;
   }
 
   drawVoice() {
