@@ -156,7 +156,7 @@ git tag v0.2.0
 git push origin v0.2.0
 ```
 
-The workflow then builds a signed APK and attaches `detent.apk` to a GitHub release.
+The workflow then builds a signed APK and attaches `detent.apk` to a GitHub release. A `v` tag without `DETENT_KEYSTORE_BASE64` fails the run, and the workflow checks the key of the APK before it publishes, so a debug-signed build can never reach a release.
 
 The workflow signs releases with these repository secrets:
 

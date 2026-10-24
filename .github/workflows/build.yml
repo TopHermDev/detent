@@ -60,6 +60,25 @@ jobs:
           name: detent-${{ env.VERSION }}
           path: detent.apk
 
+      # A version tag must carry the release key, and the APK that it publishes must wear that key too.
+      - name: Require the release key for a release
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          if [[ -z "$KEYSTORE_BASE64" ]]; then
+            echo "::error::a version tag needs the DETENT_KEYSTORE_BASE64 secret to publish a signed release"
+            exit 1
+          fi
+
+      - name: Check the key of the APK
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          APKSIGNER="$ANDROID_HOME/build-tools/36.0.0/apksigner"
+          "$APKSIGNER" verify --print-certs detent.apk | tee "$RUNNER_TEMP/certs.txt"
+          if grep -q "Android Debug" "$RUNNER_TEMP/certs.txt"; then
+            echo "::error::detent.apk is signed with the debug key, not the release key"
+            exit 1
+          fi
+
       - name: Publish the release
         if: startsWith(github.ref, 'refs/tags/v')
         env:
