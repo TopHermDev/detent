@@ -81,6 +81,11 @@ class Prefs(ctx: Context) {
         get() = sp.getBoolean("ownBar", false)
         set(v) = sp.edit { putBoolean("ownBar", v) }
 
+    /** True when the dial takes its colours from the wallpaper. Android 12 and higher only. */
+    var matchWall: Boolean
+        get() = sp.getBoolean("matchWall", false)
+        set(v) = sp.edit { putBoolean("matchWall", v) }
+
     /** Keys of the apps last opened from search, newest first. */
     var recent: List<String>
         get() = sp.getString("recent", null)?.split('\n')?.filter { it.isNotEmpty() }.orEmpty()

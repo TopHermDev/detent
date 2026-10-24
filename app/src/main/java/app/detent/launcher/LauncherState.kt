@@ -289,6 +289,9 @@ class LauncherState(
     /** True when Detent hides the Android status bar and shows battery, wifi, and signal itself. */
     var ownBar by mutableStateOf(prefs.ownBar)
         private set
+    /** True when the dial takes its colours from the wallpaper. Android 12 and higher only. */
+    var matchWall by mutableStateOf(prefs.matchWall && WallpaperTheme.available)
+        private set
     /** Path of the user's own wallpaper, or null for the theme wallpaper. */
     var customWall by mutableStateOf(prefs.customWall)
         private set
@@ -943,7 +946,13 @@ class LauncherState(
     private fun goTo(n: Int?) {
         val cur = ob
         if (cur == Step.THEME && n != Step.THEME) {
-            cfg = cfg.copy(theme = mod(pos.roundToInt(), THEMES.size))
+            val picked = mod(pos.roundToInt(), THEMES.size)
+            // Picking a theme on the dial turns the wallpaper theme off.
+            if (matchWall && picked != cfg.theme) {
+                matchWall = false
+                prefs.matchWall = false
+            }
+            cfg = cfg.copy(theme = picked)
             jumpTo(appPos.toFloat())
         }
         if (n == Step.THEME && cur != Step.THEME) {
@@ -963,7 +972,8 @@ class LauncherState(
 
     /** Copies the theme to the lock screen when the theme or the side changed since the last copy. */
     private fun syncWallpaper() {
-        if (!lockWall) return
+        // The wallpaper theme leaves the wallpaper of the phone alone.
+        if (!lockWall || matchWall) return
         val grid = layout.grid
         val custom = if (grid) null else customWall
         val key = "${THEMES[cfg.theme].name}|${cfg.side}|${if (grid) "grid" else custom ?: "theme"}"
@@ -998,6 +1008,14 @@ class LauncherState(
         tap()
         ownBar = own
         prefs.ownBar = own
+    }
+
+    /** The dial takes the colours that the phone draws from the wallpaper. */
+    fun toggleMatchWall() {
+        tap()
+        if (!WallpaperTheme.available) return
+        matchWall = !matchWall
+        prefs.matchWall = matchWall
     }
 
     fun obNext() {
