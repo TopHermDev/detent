@@ -96,9 +96,13 @@ Your photo replaces the theme wallpaper. The theme still sets the colours. The g
 
 Detent crops the centre of the photo to the shape of your screen and keeps a copy. It does not need access to your other photos. To go back to the theme wallpaper, tap `theme wallpaper` on the same step. If the `lock screen` switch is on, the lock screen uses your photo too.
 
+### Match the wallpaper
+
+The `match wallpaper` switch on the feel step takes the colours of the dial from the wallpaper instead of the theme. Android 12 and higher keeps a colour palette for the wallpaper, so Detent follows it without reading the wallpaper and without a permission. Detent then leaves the wallpaper of the phone alone. Picking a theme on the theme step turns the switch off. Below Android 12 the switch does not appear.
+
 ## Settings
 
-The `feel` step has 4 switches and a choice of status bar.
+The `feel` step has up to 5 switches and a choice of status bar.
 
 | Switch | What it does |
 | --- | --- |
@@ -106,6 +110,7 @@ The `feel` step has 4 switches and a choice of status bar.
 | `haptics` | Gives a light tick for each app and a firmer tick for each letter. It follows the system touch feedback setting. |
 | `dots` | Shows an accent dot on apps with new notifications. The dot clears when you open the app. This switch needs notification access. |
 | `lock screen` | Sets the lock screen and the system wallpaper to the theme. On the grid layouts, it sets the dot grid. Android then takes the lock screen colours from it. |
+| `match wallpaper` | Takes the colours of the dial from the wallpaper instead of the theme. Android 12 and higher only. |
 
 | Status bar | What it shows |
 | --- | --- |

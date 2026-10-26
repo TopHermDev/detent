@@ -3,6 +3,7 @@ package app.detent.launcher
 import androidx.compose.animation.core.CubicBezierEasing
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
+import kotlin.math.abs
 import kotlin.math.cos
 import kotlin.math.max
 import kotlin.math.min
@@ -146,6 +147,21 @@ fun mix(a: Color, b: Color, t: Float) = Color(
     a.green * t + b.green * (1 - t),
     a.blue * t + b.blue * (1 - t),
 )
+
+/**
+ * The darker of two tones on a dark scheme, the lighter one on a light scheme. The wallpaper palette is
+ * only an ordered scale, so the ends are chosen by luminance and not by the index of the tone.
+ */
+fun endTone(a: Long, b: Long, dark: Boolean): Long {
+    val lo = if (Color(a).luminance() <= Color(b).luminance()) a else b
+    return if (dark) lo else if (lo == a) b else a
+}
+
+/** The one of two tones that stands out more against [bg]. */
+fun standTone(a: Long, b: Long, bg: Long): Long {
+    val l = Color(bg).luminance()
+    return if (abs(Color(a).luminance() - l) >= abs(Color(b).luminance() - l)) a else b
+}
 
 class Palette(t: ThemeDef) {
     val light = t.light

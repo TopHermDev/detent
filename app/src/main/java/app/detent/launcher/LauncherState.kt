@@ -54,6 +54,10 @@ data class OpenApp(
 private const val RECENT = 5
 /** Search keeps more keys than it shows, so an uninstalled app does not shorten the list. */
 private const val RECENT_KEEP = 10
+/** The pull, in design units, that brings the notification shade all the way down. */
+private const val PULL = 320f
+/** The part of the pull that opens the shade when the finger lifts. */
+private const val OPEN_AT = .35f
 
 /** The voice mode: wait for the service, hear the user, think about the words, or report that it heard no app. */
 enum class Hear { Wait, Talk, Think, Miss }
@@ -210,6 +214,7 @@ class LauncherState(
     private var warnJob: Job? = null
     private var clockJob: Job? = null
     private var lsJob: Job? = null
+    private var shadeJob: Job? = null
     private var scrubBase = 0
     private var appPos = 0
     private var seq = 0L
@@ -288,6 +293,9 @@ class LauncherState(
 
     /** True when Detent hides the Android status bar and shows battery, wifi, and signal itself. */
     var ownBar by mutableStateOf(prefs.ownBar)
+        private set
+    /** True when the dial takes its colours from the wallpaper. Android 12 and higher only. */
+    var matchWall by mutableStateOf(prefs.matchWall && WallpaperTheme.available)
         private set
     /** Path of the user's own wallpaper, or null for the theme wallpaper. */
     var customWall by mutableStateOf(prefs.customWall)
@@ -655,8 +663,16 @@ class LauncherState(
     var lift by mutableFloatStateOf(0f)
         private set
 
+    /** How far a drag down from the top has come, from 0 to 1. At [OPEN_AT], the shade opens. */
+    var pull by mutableFloatStateOf(0f)
+        private set
+
+    /** True while the shade shows the notifications. */
+    var shade by mutableStateOf(false)
+        private set
+
     private fun blocked() =
-        open != null || search || hear != null || menu != null || ob == Step.WELCOME || ob == Step.APPS
+        open != null || search || hear != null || menu != null || shade || ob == Step.WELCOME || ob == Step.APPS
 
     private fun mirX(x: Float) = if (left) W - x else x
 
@@ -726,15 +742,27 @@ class LauncherState(
         if (d.edge != Edge.None) {
             // The distance away from the edge.
             val dist = if (d.edge == Edge.Top) y - d.y0 else d.y0 - y
-            if (d.edge == Edge.Bottom) lift = (dist / 24f).coerceIn(0f, 1f)
-            if (!d.pulled && dist > 24 && dist > abs(x - d.x0)) {
-                d.pulled = true
-                if (d.edge == Edge.Bottom) {
-                    openSearch()
-                } else {
-                    fb.tick()
-                    if (!host.openNotifications()) showToast("can't open the notifications")
+            val far = dist > 24 && dist > abs(x - d.x0)
+            when (d.edge) {
+                Edge.Bottom -> {
+                    lift = (dist / 24f).coerceIn(0f, 1f)
+                    if (!d.pulled && far) {
+                        d.pulled = true
+                        openSearch()
+                    }
                 }
+                Edge.Top -> if (notifAccess) {
+                    // The shade follows the finger and the dial recedes behind it.
+                    pull = (dist / PULL).coerceIn(0f, 1f)
+                } else {
+                    // Without notification access the system shade is all that Detent can open.
+                    if (!d.pulled && far) {
+                        d.pulled = true
+                        fb.tick()
+                        if (!host.openNotifications()) showToast("can't open the notifications")
+                    }
+                }
+                Edge.None -> Unit
             }
             return
         }
@@ -755,6 +783,12 @@ class LauncherState(
             endScrub()
             return
         }
+        // A pull from the top opens the shade, or settles back when it did not travel far.
+        if (d.edge == Edge.Top && notifAccess) {
+            if (pull >= OPEN_AT) fb.tick()
+            settleShade(pull >= OPEN_AT)
+            return
+        }
         val t = SystemClock.uptimeMillis()
         if (!d.moved && t - d.t0 < 450) {
             target = pos.roundToInt().toFloat()
@@ -773,6 +807,7 @@ class LauncherState(
     fun onCancel() {
         cancelPress()
         lift = 0f
+        settleShade(pull >= OPEN_AT)
         val d = drag ?: return
         drag = null
         if (kind == Kind.Lens) lsT = .5f
@@ -943,7 +978,13 @@ class LauncherState(
     private fun goTo(n: Int?) {
         val cur = ob
         if (cur == Step.THEME && n != Step.THEME) {
-            cfg = cfg.copy(theme = mod(pos.roundToInt(), THEMES.size))
+            val picked = mod(pos.roundToInt(), THEMES.size)
+            // Picking a theme on the dial turns the wallpaper theme off.
+            if (matchWall && picked != cfg.theme) {
+                matchWall = false
+                prefs.matchWall = false
+            }
+            cfg = cfg.copy(theme = picked)
             jumpTo(appPos.toFloat())
         }
         if (n == Step.THEME && cur != Step.THEME) {
@@ -963,7 +1004,8 @@ class LauncherState(
 
     /** Copies the theme to the lock screen when the theme or the side changed since the last copy. */
     private fun syncWallpaper() {
-        if (!lockWall) return
+        // The wallpaper theme leaves the wallpaper of the phone alone.
+        if (!lockWall || matchWall) return
         val grid = layout.grid
         val custom = if (grid) null else customWall
         val key = "${THEMES[cfg.theme].name}|${cfg.side}|${if (grid) "grid" else custom ?: "theme"}"
@@ -998,6 +1040,14 @@ class LauncherState(
         tap()
         ownBar = own
         prefs.ownBar = own
+    }
+
+    /** The dial takes the colours that the phone draws from the wallpaper. */
+    fun toggleMatchWall() {
+        tap()
+        if (!WallpaperTheme.available) return
+        matchWall = !matchWall
+        prefs.matchWall = matchWall
     }
 
     fun obNext() {
@@ -1350,6 +1400,39 @@ class LauncherState(
     fun closeSearch() {
         fb.tap()
         search = false
+    }
+
+    /** Closes the notification shade. */
+    fun closeShade() {
+        fb.tap()
+        settleShade(false)
+    }
+
+    /** Moves the shade with the finger. [dy] is the drag in design units, up is negative. */
+    fun shadeDrag(dy: Float) {
+        pull = (pull + dy / PULL).coerceIn(0f, 1f)
+    }
+
+    /** Settles the shade after a drag on the panel. */
+    fun endShadeDrag() = settleShade(pull >= OPEN_AT)
+
+    /** Settles the shade open or closed after the finger lifts or the panel is tapped. */
+    private fun settleShade(open: Boolean) {
+        shadeJob?.cancel()
+        val from = pull
+        val to = if (open) 1f else 0f
+        shade = open
+        if (from == to) return
+        shadeJob = scope.launch {
+            val t0 = SystemClock.uptimeMillis()
+            while (true) {
+                val t = ((SystemClock.uptimeMillis() - t0) / 300f).coerceIn(0f, 1f)
+                pull = from + (to - from) * Ease.transform(t)
+                if (t >= 1f) break
+                withFrameMillis { }
+            }
+            pull = to
+        }
     }
 
     fun matches(q: String): List<AppEntry> {

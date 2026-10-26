@@ -41,6 +41,7 @@ import app.detent.launcher.Palette
 import app.detent.launcher.Side
 import app.detent.launcher.Step
 import app.detent.launcher.ThemeDef
+import app.detent.launcher.WallpaperTheme
 import kotlinx.coroutines.launch
 
 private class Copy(val counter: String, val title: String, val body: String)
@@ -139,6 +140,8 @@ fun Onboarding(s: LauncherState, pal: Palette, theme: ThemeDef) {
                     Row(horizontalArrangement = gap) {
                         Chip("system bar", !s.ownBar, pal, { s.setBar(false) })
                         Chip("detent bar", s.ownBar, pal, { s.setBar(true) })
+                        // The wallpaper palette needs Android 12, so the chip stays away below it.
+                        if (WallpaperTheme.available) Chip("match wallpaper", s.matchWall, pal, { s.toggleMatchWall() })
                     }
                 }
                 Step.READY -> if (!s.isHome) Row(Modifier.padding(top = u.dp(42f))) {
@@ -153,6 +156,7 @@ fun Onboarding(s: LauncherState, pal: Palette, theme: ThemeDef) {
                 Step.FEEL -> when {
                     s.dots && !s.notifAccess -> "dots need notification access"
                     s.ownBar -> "drag down from the top for notifications"
+                    s.matchWall -> "the dial follows your wallpaper"
                     s.lockWall -> "the lock screen uses the theme"
                     else -> ""
                 }
