@@ -49,6 +49,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableIntStateOf
@@ -121,6 +122,7 @@ import app.detent.launcher.Spin
 import app.detent.launcher.Step
 import app.detent.launcher.THEMES
 import app.detent.launcher.ThemeDef
+import app.detent.launcher.Unread
 import app.detent.launcher.WallpaperTheme
 import app.detent.launcher.handMatrix
 import app.detent.launcher.W
@@ -174,6 +176,10 @@ private fun Home(s: LauncherState) {
     }
     val pal = follow?.second ?: PALETTES[live]
     val theme = follow?.first ?: THEMES[live]
+    val u = LocalUnits.current
+    // The shade follows the finger and settles open or closed when the finger lifts.
+    val notes by Unread.notes.collectAsState()
+    val reveal = s.pull
     // While the theme dial turns, colours follow every tick. The wallpaper waits until the dial stops.
     var wall by remember { mutableIntStateOf(live) }
     val idle = s.spin == Spin.Idle
@@ -204,11 +210,19 @@ private fun Home(s: LauncherState) {
         // The wallpaper theme draws its own background and leaves the wallpaper of the phone alone.
         if (!grid && follow == null) Wallpaper(THEMES[wall], pal, s.left, s.customWall)
         GestureLayer(s)
-        if (grid) {
-            DotGrid(s, pal, wave, status)
-        } else {
-            Clock(s, pal)
-            DialCanvas(s, pal, wave)
+        // The dial recedes as the shade comes down over it.
+        Box(
+            Modifier.fillMaxSize().graphicsLayer {
+                translationY = -reveal * 56f * u.k
+                alpha = 1f - reveal * .6f
+            },
+        ) {
+            if (grid) {
+                DotGrid(s, pal, wave, status)
+            } else {
+                Clock(s, pal)
+                DialCanvas(s, pal, wave)
+            }
         }
         // The readout layout shows the letter in its readout.
         if (s.kind != Kind.Readout) ScrubLetter(s, pal)
@@ -219,6 +233,7 @@ private fun Home(s: LauncherState) {
         if (s.ob != null) Onboarding(s, pal, theme)
         QuickMenuView(s, pal)
         SearchSheet(s, pal)
+        ShadePanel(s, pal, notes, reveal)
         StatusStrip(s, pal, status)
         AppSheet(s, pal)
         Title(s, pal)
